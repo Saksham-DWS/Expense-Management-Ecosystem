@@ -1,18 +1,18 @@
 FROM node:20-alpine
 
 WORKDIR /app
-
-# Install only production deps
 ENV NODE_ENV=production
-COPY package*.json ./
+
+# Copy manifest and install production deps (works even if build context is repo root)
+COPY backend/package*.json ./
 RUN npm ci --omit=dev
 
 # Copy source
-COPY . .
+COPY backend/. .
 
-# Ensure uploads directory exists for multer writes
-RUN mkdir -p /app/uploads
+# Ensure writable uploads directory for multer
+RUN mkdir -p /app/uploads && chown -R node:node /app/uploads
+USER node
 
 EXPOSE 5000
-
 CMD ["node", "server.js"]
