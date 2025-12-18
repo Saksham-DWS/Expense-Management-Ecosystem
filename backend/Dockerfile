@@ -1,17 +1,18 @@
 FROM node:20-alpine
 
-WORKDIR /app
+# Work inside backend folder
+WORKDIR /app/backend
 ENV NODE_ENV=production
 
-# Copy manifest and install production deps (fall back to npm install if lock is absent)
-COPY package.json package-lock.json ./
+# Copy manifests from the repo root (expects build context at repo root)
+COPY backend/package.json backend/package-lock.json ./
 RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
 
-# Copy source
-COPY . .
+# Copy backend source
+COPY backend/. .
 
 # Ensure writable uploads directory for multer
-RUN mkdir -p /app/uploads && chown -R node:node /app/uploads
+RUN mkdir -p /app/backend/uploads && chown -R node:node /app/backend/uploads
 USER node
 
 EXPOSE 5000
