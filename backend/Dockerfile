@@ -1,18 +1,20 @@
 FROM node:20-alpine
 
-# Work inside backend folder
-WORKDIR /app/backend
+# Copy the project (works whether build context is repo root or backend/)
+WORKDIR /app/src
 ENV NODE_ENV=production
+COPY . .
 
-# Copy manifests from the repo root (expects build context at repo root)
-COPY backend/package.json backend/package-lock.json ./
+# Resolve app dir (root if context=backend, else /backend)
+RUN if [ -f /app/src/backend/package.json ]; then ln -s /app/src/backend /app/app; \
+    elif [ -f /app/src/package.json ]; then ln -s /app/src /app/app; \
+    else echo "package.json not found in build context" && ls -la /app/src && exit 1; fi
+
+WORKDIR /app/app
 RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
 
-# Copy backend source
-COPY backend/. .
-
 # Ensure writable uploads directory for multer
-RUN mkdir -p /app/backend/uploads && chown -R node:node /app/backend/uploads
+RUN mkdir -p uploads && chown -R node:node /app/app/uploads
 USER node
 
 EXPOSE 5000
