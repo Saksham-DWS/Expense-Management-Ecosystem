@@ -6,6 +6,7 @@ import {
   register,
   login,
   getMe,
+  updateMe,
   getUsers,
   updateUser,
   deleteUser,
@@ -22,6 +23,7 @@ router.post('/login', login);
 
 // Protected routes
 router.get('/me', protect, getMe);
+router.put('/me', protect, updateMe);
 router.post('/register', protect, authorize('super_admin', 'business_unit_admin'), register);
 router.get('/users', protect, authorize('super_admin', 'business_unit_admin'), getUsers);
 router.put('/users/:id', protect, authorize('super_admin'), updateUser);

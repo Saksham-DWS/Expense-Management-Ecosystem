@@ -35,6 +35,11 @@ export const getMe = async () => {
   return response.data;
 };
 
+export const updateMe = async (payload) => {
+  const response = await api.put('/auth/me', payload);
+  return response.data;
+};
+
 export const getUsers = async () => {
   const response = await api.get('/auth/users');
   return response.data;

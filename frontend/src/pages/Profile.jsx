@@ -8,9 +8,10 @@ import Input from '../components/common/Input';
 import { useAuth } from '../context/AuthContext';
 import { getRoleName, formatDateTime } from '../utils/formatters';
 import toast from 'react-hot-toast';
+import { updateMe } from '../services/authService';
 
 const Profile = () => {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     name: user?.name || '',
@@ -19,6 +20,7 @@ const Profile = () => {
     newPassword: '',
     confirmPassword: '',
   });
+  const [saving, setSaving] = useState(false);
 
   const handleChange = (e) => {
     setFormData({
@@ -29,19 +31,54 @@ const Profile = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+    const wantsPasswordChange =
+      formData.currentPassword || formData.newPassword || formData.confirmPassword;
+
+    if (wantsPasswordChange && !formData.currentPassword) {
+      toast.error('Please enter your current password to set a new one');
+      return;
+    }
+
+    if (formData.newPassword && formData.newPassword.length < 6) {
+      toast.error('New password must be at least 6 characters');
+      return;
+    }
+
     if (formData.newPassword && formData.newPassword !== formData.confirmPassword) {
       toast.error('New passwords do not match');
       return;
     }
 
     try {
-      // API call to update profile would go here
-      toast.success('Profile updated successfully');
-      setIsEditing(false);
+      setSaving(true);
+      const payload = {
+        name: formData.name,
+        email: formData.email,
+      };
+
+      if (wantsPasswordChange) {
+        payload.currentPassword = formData.currentPassword;
+        payload.newPassword = formData.newPassword;
+      }
+
+      const response = await updateMe(payload);
+      if (response.success) {
+        setUser(response.data);
+        toast.success('Profile updated successfully');
+        setIsEditing(false);
+        setFormData((prev) => ({
+          ...prev,
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: '',
+        }));
+      } else {
+        toast.error(response.message || 'Failed to update profile');
+      }
     } catch (error) {
-      toast.error('Failed to update profile');
+      toast.error(error?.response?.data?.message || 'Failed to update profile');
     }
+    setSaving(false);
   };
 
   return (
@@ -160,8 +197,8 @@ const Profile = () => {
                 <Button type="button" variant="secondary" onClick={() => setIsEditing(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" variant="primary">
-                  Save Changes
+                <Button type="submit" variant="primary" disabled={saving}>
+                  {saving ? 'Saving...' : 'Save Changes'}
                 </Button>
               </div>
             </form>
