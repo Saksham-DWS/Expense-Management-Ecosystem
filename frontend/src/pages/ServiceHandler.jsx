@@ -35,7 +35,7 @@ const ServiceHandler = () => {
       if (response.success) {
         setServices(response.data);
       }
-    } catch {
+    } catch (error) {
       toast.error('Failed to load services');
     } finally {
       setLoading(false);
@@ -73,7 +73,7 @@ const ServiceHandler = () => {
       );
       handleCloseModal();
       fetchServices();
-    } catch {
+    } catch (error) {
       toast.error('Failed to submit response');
     }
   };
@@ -108,7 +108,7 @@ const ServiceHandler = () => {
       if (response.success) {
         setLogs(response.data);
       }
-    } catch {
+    } catch (error) {
       toast.error('Failed to load logs');
       setLogs([]);
     } finally {
@@ -119,6 +119,7 @@ const ServiceHandler = () => {
   const getStatusBadge = (status) => {
     const variants = {
       Active: 'success',
+      Declined: 'danger',
       Deactive: 'warning',
       Pending: 'warning',
     };
@@ -384,7 +385,7 @@ const ServiceHandler = () => {
               </div>
             ) : (
               <div className="space-y-3">
-                {logs.map((log) => (
+                {logs.map((log, index) => (
                   <div
                     key={log._id}
                     className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
