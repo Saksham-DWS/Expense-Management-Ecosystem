@@ -3,9 +3,9 @@ FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Copy manifest and install production deps
-COPY package*.json ./
-RUN npm ci --omit=dev
+# Copy manifest and install production deps (fall back to npm install if lock is absent)
+COPY package.json package-lock.json ./
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
 
 # Copy source
 COPY . .
