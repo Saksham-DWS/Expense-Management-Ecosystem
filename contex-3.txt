@@ -1,0 +1,33 @@
+I wanted to check  : 
+
+Hey i wanted to check my application 5 Day before internal and email notification generating capability,
+that if any service handler who's 
+purchase date for example  :  on monthly basis and he bought a service etc on 25 Oct 2025 right and so his next renewal date will be 25 Nov 2025
+so the business unit service handler on which name the service boughted will get before 5 days a renwal internal internal notification and email notification that
+are you using this service or not ,
+like on 20 Nov 2025 right ,
+
+so the catch question is currently the service handlers who's accounts were not created yet and the service already pruchased on name of them, 
+so when their will be maded you system show the entries who are pruchased on name of them,
+
+but there is a scianrio our current system show them a already entered entries which are pruchased on name of them 
+and in future when thier accounts maded our system show all entries allot to them,
+
+so one tricky scinario comes i just checked,  that i entered a entry as business unit spoc :
+and the entry date is 25 Nov 2025 and recurring i puted Monthly and my business unit admin / super admin did'nt 
+maded the account of that service handler on who's name i purchsed the service right ,
+
+so if we see in perpective of system entry is maded of 25 Nov 2025 and for example today is 20 Dec 2025 ,
+so technically our system needs to generate a service renewal internal notification and email notification to the service handler right 
+but the catch is our system dont know the service handler name yet and his account is not created yet, so 
+whom the system send renewal notification, if this type of scinario comes , like and if a super admin makes that service handler account
+on 21 Dec 2025 and the service handler loggin first time he saw all service entries purchased on name of him, 
+But the renwal notification he did'not got cause his account is created day after the reminder notification,
+
+so what solution would there , case i thought is : case 1 : if his account maded on 21 or 24 or 26 he will surely get the internal notification and 
+email notification of service renewal request on 20 Jan 2026 or according to recurring type Monthly or yearly.
+
+case 2 :  if his account created on before 2 days of 2 days auto cancel request email and notification t0 service handler and MIS email
+he still got to see the service renewal notification 
+
+so what you think what is best , and currently our system is working with which case

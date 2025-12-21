@@ -6,6 +6,35 @@ import { getExchangeRate } from './currencyService.js';
 import { createNotification } from '../controllers/notificationController.js';
 import RenewalLog from '../models/RenewalLog.js';
 
+// Move an entry's renewal date forward until it is in the future.
+// Resets reminder/auto-cancel flags so the new cycle can notify properly.
+const advanceNextRenewalDate = (entry) => {
+  if (!entry?.nextRenewalDate) return false;
+  const now = new Date();
+  let nextDate = new Date(entry.nextRenewalDate);
+  const original = nextDate.getTime();
+
+  if (entry.recurring === 'Monthly') {
+    while (nextDate < now) {
+      nextDate.setMonth(nextDate.getMonth() + 1);
+    }
+  } else if (entry.recurring === 'Yearly') {
+    while (nextDate < now) {
+      nextDate.setFullYear(nextDate.getFullYear() + 1);
+    }
+  } else {
+    return false;
+  }
+
+  if (nextDate.getTime() !== original) {
+    entry.nextRenewalDate = nextDate;
+    entry.renewalNotificationSent = false;
+    entry.autoCancellationNotificationSent = false;
+    return true;
+  }
+  return false;
+};
+
 // Build a permissive regex pattern from handler name (full + tokens)
 const buildNamePattern = (name) => {
   if (!name) return undefined;
@@ -36,6 +65,20 @@ export const scheduleRenewalReminders = () => {
   cron.schedule('0 14 * * *', async () => {
     try {
       console.log('Running renewal reminder cron job...');
+
+      // Catch up missed cycles (handler not created, reminder not sent) so future reminders resume
+      const overdueEntries = await ExpenseEntry.find({
+        nextRenewalDate: { $lt: new Date() },
+        status: 'Active',
+        entryStatus: 'Accepted',
+        recurring: { $in: ['Monthly', 'Yearly'] },
+      });
+      for (const entry of overdueEntries) {
+        const advanced = advanceNextRenewalDate(entry);
+        if (advanced) {
+          await entry.save();
+        }
+      }
 
       const reminderDays = parseInt(process.env.RENEWAL_NOTIFICATION_DAYS) || 5;
       const targetDate = new Date();
