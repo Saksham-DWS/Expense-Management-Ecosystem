@@ -112,6 +112,16 @@ const excelSerialToDate = (serial) => {
   return date;
 };
 
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const formatMonthLabel = (date) => {
+  if (!date || Number.isNaN(date.getTime())) return '';
+  const monthIndex = date.getUTCMonth();
+  const year = date.getUTCFullYear();
+  if (monthIndex < 0 || monthIndex > 11 || !year) return '';
+  return `${MONTH_LABELS[monthIndex]}-${year}`;
+};
+
 // Parse flexible date formats (Excel serial, mm-dd-yyyy, dd-mm-yyyy, dd-MMM-yy, etc.)
 const parseDateValue = (value) => {
   if (!value) return null;
@@ -166,6 +176,22 @@ const parseDateValue = (value) => {
   }
 
   return null;
+};
+
+const normalizeMonthValue = (raw, fallbackDate) => {
+  if (raw !== undefined && raw !== null) {
+    const parsed = parseDateValue(raw);
+    if (parsed && !Number.isNaN(parsed.getTime())) {
+      return formatMonthLabel(parsed);
+    }
+    const trimmed = raw.toString().trim();
+    if (!trimmed) return '';
+    if (/^[A-Za-z]{3}[- ]\d{4}$/.test(trimmed)) {
+      return trimmed.replace(' ', '-');
+    }
+    return trimmed;
+  }
+  return fallbackDate ? formatMonthLabel(fallbackDate) : '';
 };
 
 // Helper to fetch a field by multiple aliases (handles trim and lower-case match)
@@ -306,7 +332,7 @@ export const bulkUploadExpenses = async (req, res) => {
         const rawAssigned = getField(row, ['Card Assigned To', 'cardAssignedTo', 'Card assigned to']);
         const cardAssignedTo = rawAssigned?.toString().trim();
         const date = getField(row, ['Date', 'date']);
-        const month = (getField(row, ['Month', 'month']) || '').toString().trim() || undefined;
+        const rawMonth = getField(row, ['Month', 'month']);
         // Enum maps
         const typeMap = {
           'tool & service': 'Service',
@@ -536,6 +562,8 @@ export const bulkUploadExpenses = async (req, res) => {
           continue;
         }
 
+        const monthLabel = normalizeMonthValue(rawMonth, parsedDate);
+
         // Exchange rate handling: prefer provided XE, else fetch
         const providedRate = parseFloat(row['XE'] || row['xe'] || row['XE Rate'] || row['xeRate']);
         let rate = providedRate;
@@ -585,7 +613,7 @@ export const bulkUploadExpenses = async (req, res) => {
             cardNumber,
             cardAssignedTo,
             date: parsedDate,
-            month: month || parsedDate.toLocaleString('default', { month: 'short', year: 'numeric' }),
+            month: monthLabel || formatMonthLabel(parsedDate),
             status,
             particulars,
             narration: narration || particulars,

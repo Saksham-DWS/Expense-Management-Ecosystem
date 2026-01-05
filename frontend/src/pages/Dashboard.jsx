@@ -66,6 +66,17 @@ const formatCompactCurrency = (value = 0) =>
     maximumFractionDigits: 1,
   }).format(value);
 
+const toNumber = (value) => {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/[^0-9.-]/g, '');
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+};
+
 const getSafeDate = (value) => {
   if (!value) return null;
   const parsed = new Date(value);
@@ -144,9 +155,13 @@ const Dashboard = () => {
   const fetchExpenses = async (customFilters = filters, customSearchTerm = searchTerm) => {
     try {
       setLoading(true);
+      const resolvedFilters = customFilters ?? {};
+      const hasSharedOnly = Object.prototype.hasOwnProperty.call(resolvedFilters, 'sharedOnly');
+      const resolvedSharedOnly = hasSharedOnly ? resolvedFilters.sharedOnly === 'true' : sharedOnly;
+      const { sharedOnly: _sharedOnly, ...restFilters } = resolvedFilters;
       const response = await getExpenses({
-        ...customFilters,
-        ...(sharedOnly ? { isShared: 'true' } : {}),
+        ...restFilters,
+        ...(resolvedSharedOnly ? { isShared: 'true' } : {}),
         search: customSearchTerm,
       });
       if (response.success) {
@@ -189,8 +204,11 @@ const Dashboard = () => {
 
   const handleExport = async () => {
     try {
-      const exportFilters = { ...filters, search: searchTerm };
-      if (sharedOnly) {
+      const baseFilters = { ...filters, search: searchTerm };
+      const hasSharedOnly = Object.prototype.hasOwnProperty.call(baseFilters, 'sharedOnly');
+      const resolvedSharedOnly = hasSharedOnly ? baseFilters.sharedOnly === 'true' : sharedOnly;
+      const { sharedOnly: _sharedOnly, ...exportFilters } = baseFilters;
+      if (resolvedSharedOnly) {
         exportFilters.isShared = 'true';
       }
       if (exportLimit) {
@@ -208,14 +226,14 @@ const Dashboard = () => {
   const enhancedExpenses = useMemo(
     () =>
       expenses.map((expense) => {
-        const amountValue = Number(expense.amountInINR ?? expense.amount ?? 0);
+        const amountValue = toNumber(expense.amountInINR ?? expense.amount ?? 0);
         const dateObj = getSafeDate(expense.date);
         const monthLabel = dateObj ? format(dateObj, 'MMM-yyyy') : expense.month || 'Unknown';
 
         return {
           ...expense,
           amountValue,
-          amountBase: Number(expense.amount) || 0,
+          amountBase: toNumber(expense.amount ?? 0),
           dateObj,
           monthLabel,
           recurringType: expense.recurring || 'One-time',
@@ -276,11 +294,15 @@ const Dashboard = () => {
           ? (exp) => exp.statusLabel
           : (exp) => exp.businessUnitLabel;
 
-    return buildAggregatedMetrics(enhancedExpenses, selector).map(({ name, totalExpense }) => ({
-      name,
-      value: totalExpense,
-    }));
+    return buildAggregatedMetrics(enhancedExpenses, selector)
+      .map(({ name, totalExpense }) => ({
+        name,
+        value: totalExpense,
+      }))
+      .filter((item) => item.value > 0);
   }, [enhancedExpenses, pieGrouping]);
+
+  const pieTotal = useMemo(() => pieData.reduce((sum, item) => sum + item.value, 0), [pieData]);
 
   const serviceAgg = useMemo(
     () => buildAggregatedMetrics(enhancedExpenses, (exp) => exp.serviceLabel),
@@ -672,7 +694,7 @@ const Dashboard = () => {
             }
           >
             <div className="h-80">
-              {pieData.length === 0 ? (
+              {pieTotal === 0 ? (
                 <EmptyChartState message="No data available for the selected filters." />
               ) : (
                 <ResponsiveContainer>

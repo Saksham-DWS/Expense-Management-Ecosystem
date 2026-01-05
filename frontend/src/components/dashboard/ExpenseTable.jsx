@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Edit, Trash2 } from 'lucide-react';
 import Badge from '../common/Badge';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { formatCurrency, formatDate, getMonthYear } from '../../utils/formatters';
 import { useAuth } from '../../context/AuthContext';
 
 const ExpenseTable = ({ expenses, onEdit, onDelete, loading, showDuplicateColumn = true }) => {
@@ -13,6 +13,21 @@ const ExpenseTable = ({ expenses, onEdit, onDelete, loading, showDuplicateColumn
   const canDelete = user?.role === 'super_admin';
   const canViewDuplicateStatus = user?.role === 'mis_manager';
   const displayDuplicateColumn = canViewDuplicateStatus && showDuplicateColumn;
+
+  const formatMonthCell = (value, fallbackDate) => {
+    if (value instanceof Date) return getMonthYear(value);
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return fallbackDate ? getMonthYear(fallbackDate) : '-';
+      if (/^[A-Za-z]{3}[- ]\d{4}$/.test(trimmed)) {
+        return trimmed.replace(' ', '-');
+      }
+      const parsed = new Date(trimmed);
+      if (!Number.isNaN(parsed.getTime())) return getMonthYear(parsed);
+      return trimmed;
+    }
+    return fallbackDate ? getMonthYear(fallbackDate) : '-';
+  };
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -111,7 +126,7 @@ const ExpenseTable = ({ expenses, onEdit, onDelete, loading, showDuplicateColumn
                   {expense.cardAssignedTo || '-'}
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                  {expense.month || '-'}
+                  {formatMonthCell(expense.month, expense.date)}
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                   <Badge>{expense.status || '-'}</Badge>
