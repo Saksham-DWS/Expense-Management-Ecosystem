@@ -89,7 +89,7 @@ const sampleExpenses = ({ usersByRole }) => {
       approvedBy: 'Raghav',
       serviceHandlerUnit: 'Wytlabs',
       recurring: 'Yearly',
-      duplicateStatus: 'Merged',
+      duplicateStatus: null,
     },
     {
       cardNumber: 'C002',
@@ -123,7 +123,7 @@ const sampleExpenses = ({ usersByRole }) => {
       approvedBy: 'Yulia',
       serviceHandlerUnit: 'Collabx',
       recurring: 'Monthly',
-      duplicateStatus: 'Merged',
+      duplicateStatus: null,
     },
     {
       cardNumber: 'P101',

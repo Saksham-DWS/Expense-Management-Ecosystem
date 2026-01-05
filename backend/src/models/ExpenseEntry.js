@@ -23,7 +23,7 @@ const expenseEntrySchema = new mongoose.Schema(
     status: {
       type: String,
       enum: ['Active', 'Declined', 'Deactive'],
-      default: 'Active',
+      required: false,
     },
     particulars: {
       type: String,

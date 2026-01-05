@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import ExpenseEntry from '../models/ExpenseEntry.js';
 import { convertToINR } from '../services/currencyService.js';
+import { annotateDuplicates, filterByDuplicateStatus } from '../utils/duplicateUtils.js';
 
 const parseFilterDate = (value, endOfDay = false) => {
   if (!value) return undefined;
@@ -228,6 +229,17 @@ const normalizeEnum = (value, map, allowedSet) => {
   return null;
 };
 
+const EMPTY_FILTER_VALUE = '__empty__';
+
+const applyEmptyFilter = (query, field, rawValue) => {
+  if (rawValue !== EMPTY_FILTER_VALUE) return false;
+  const clause = {
+    $or: [{ [field]: { $exists: false } }, { [field]: null }, { [field]: '' }],
+  };
+  query.$and = query.$and ? [...query.$and, clause] : [clause];
+  return true;
+};
+
 const parseBoolean = (value) => {
   if (value === undefined || value === null) return false;
   const norm = value.toString().trim().toLowerCase();
@@ -338,8 +350,6 @@ export const bulkUploadExpenses = async (req, res) => {
       total: data.length,
       success: 0,
       failed: 0,
-      merged: 0,
-      unique: 0,
       errors: [],
     };
 
@@ -455,7 +465,7 @@ export const bulkUploadExpenses = async (req, res) => {
         ];
 
         const statusRaw = normalizeTextValue(getField(row, ['Status', 'status']));
-        const status = normalizeEnum(statusRaw || 'Active', statusMap, allowedStatus) || 'Active';
+        const status = statusRaw ? normalizeEnum(statusRaw, statusMap, allowedStatus) || undefined : undefined;
         const particulars = normalizeTextValue(
           getField(row, [
             'Particulars',
@@ -611,22 +621,10 @@ export const bulkUploadExpenses = async (req, res) => {
 
         const monthLabel = normalizeMonthValue(rawMonth, parsedDate);
 
-        // Exchange rate handling: prefer provided XE, else fetch
-        const providedRate = parseFloat(
-          getField(row, ['XE', 'xe', 'XE Rate', 'xeRate', 'XE RATE'])
-        );
-        let rate = providedRate;
-        if (!rate || Number.isNaN(rate)) {
-          const converted = await convertToINR(amount, currency);
-          rate = converted.rate;
-        }
-        rate = Math.abs(rate);
-        // Amount in INR handling: prefer provided, else compute
-        const providedInINRValue = parseAmountValue(
-          getField(row, ['Amt INR', 'Amount in INR', 'amountInINR', 'Amount (INR)'])
-        );
-        const amountInINR =
-          !Number.isNaN(providedInINRValue) ? Math.abs(providedInINRValue) : amount * rate;
+        // Exchange rate handling: always use current rate for consistency
+        const converted = await convertToINR(amount, currency);
+        const rate = Math.abs(converted.rate);
+        const amountInINR = Math.abs(converted.amountInINR);
 
         // Calculate next renewal date
         let nextRenewalDate = null;
@@ -638,56 +636,34 @@ export const bulkUploadExpenses = async (req, res) => {
           nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 1);
         }
 
-        // Check for duplicates
-        const duplicateEntry = await ExpenseEntry.findOne({
+        await ExpenseEntry.create({
           cardNumber,
+          cardAssignedTo,
           date: parsedDate,
+          month: monthLabel || formatMonthLabel(parsedDate),
+          status,
           particulars,
-          businessUnit,
-          amount,
+          narration: narration || particulars,
           currency,
+          billStatus,
+          amount,
+          xeRate: rate,
+          amountInINR,
+          typeOfService,
+          businessUnit,
+          costCenter,
+          approvedBy,
+          serviceHandler,
+          recurring,
+          entryStatus: 'Accepted', // Bulk uploads are auto-approved
+          duplicateStatus: null,
+          createdBy: req.user._id,
+          nextRenewalDate,
+          isShared,
+          sharedAllocations,
         });
 
-        // If duplicate, mark existing as merged and skip creating another row
-        if (duplicateEntry) {
-          results.merged++;
-          if (duplicateEntry.duplicateStatus !== 'Merged') {
-            duplicateEntry.duplicateStatus = 'Merged';
-            await duplicateEntry.save();
-          }
-          results.success++;
-        } else {
-          results.unique++;
-
-          await ExpenseEntry.create({
-            cardNumber,
-            cardAssignedTo,
-            date: parsedDate,
-            month: monthLabel || formatMonthLabel(parsedDate),
-            status,
-            particulars,
-            narration: narration || particulars,
-            currency,
-            billStatus,
-            amount,
-            xeRate: rate,
-            amountInINR,
-            typeOfService,
-            businessUnit,
-            costCenter,
-            approvedBy,
-            serviceHandler,
-            recurring,
-            entryStatus: 'Accepted', // Bulk uploads are auto-approved
-            duplicateStatus: 'Unique',
-            createdBy: req.user._id,
-            nextRenewalDate,
-            isShared,
-            sharedAllocations,
-          });
-
-          results.success++;
-        }
+        results.success++;
       } catch (error) {
         results.failed++;
         results.errors.push({
@@ -831,23 +807,41 @@ export const exportExpenses = async (req, res) => {
 
     // Apply filters
     if (!['business_unit_admin', 'spoc', 'service_handler'].includes(req.user.role) && businessUnit) {
-      query.businessUnit = businessUnit;
+      if (!applyEmptyFilter(query, 'businessUnit', businessUnit)) {
+        query.businessUnit = businessUnit;
+      }
     }
     if (cardNumber) query.cardNumber = cardNumber;
-    if (status) query.status = status;
+    if (status) {
+      if (!applyEmptyFilter(query, 'status', status)) {
+        query.status = status;
+      }
+    }
     if (month) query.month = month;
-    if (typeOfService) query.typeOfService = typeOfService;
+    if (typeOfService) {
+      if (!applyEmptyFilter(query, 'typeOfService', typeOfService)) {
+        query.typeOfService = typeOfService;
+      }
+    }
     if (serviceHandler) applyMultiValueFilter(query, 'serviceHandler', serviceHandler);
     if (cardAssignedTo) applyMultiValueFilter(query, 'cardAssignedTo', cardAssignedTo);
-    if (costCenter) query.costCenter = costCenter;
-    if (approvedBy) query.approvedBy = approvedBy;
-    if (recurring) query.recurring = recurring;
+    if (costCenter) {
+      if (!applyEmptyFilter(query, 'costCenter', costCenter)) {
+        query.costCenter = costCenter;
+      }
+    }
+    if (approvedBy) {
+      if (!applyEmptyFilter(query, 'approvedBy', approvedBy)) {
+        query.approvedBy = approvedBy;
+      }
+    }
+    if (recurring) {
+      if (!applyEmptyFilter(query, 'recurring', recurring)) {
+        query.recurring = recurring;
+      }
+    }
     if (isShared === 'true') query.isShared = true;
     if (isShared === 'false') query.isShared = false;
-    if (duplicateStatus && ['Merged', 'Unique'].includes(duplicateStatus)) {
-      query.duplicateStatus = duplicateStatus;
-    }
-
     if (startDate || endDate) {
       query.date = {};
       if (startDate) query.date.$gte = parseFilterDate(startDate);
@@ -893,13 +887,15 @@ export const exportExpenses = async (req, res) => {
       query.entryStatus = 'Accepted';
     }
 
-    let expenseQuery = ExpenseEntry.find(query).sort({ date: -1 });
+    let expenseQuery = ExpenseEntry.find(query).sort({ date: -1 }).lean();
 
     if (limit) {
       expenseQuery = expenseQuery.limit(parseInt(limit));
     }
 
     const expenses = await expenseQuery;
+    const annotated = annotateDuplicates(expenses);
+    const filtered = filterByDuplicateStatus(annotated, duplicateStatus);
 
     // Format data for export
     const shouldIncludeDuplicateColumn = includeDuplicateStatus === 'true';
@@ -913,7 +909,7 @@ export const exportExpenses = async (req, res) => {
         .join(', ');
     };
 
-    const exportData = expenses.map((expense) => ({
+    const exportData = filtered.map((expense) => ({
       cardNumber: expense.cardNumber,
       cardAssignedTo: expense.cardAssignedTo,
       date: expense.date ? new Date(expense.date).toLocaleDateString() : '',
@@ -935,7 +931,7 @@ export const exportExpenses = async (req, res) => {
       disabledAt: expense.disabledAt ? new Date(expense.disabledAt).toLocaleDateString() : '',
       sharedBill: formatShared(expense),
       ...(shouldIncludeDuplicateColumn
-        ? { duplicateStatus: expense.duplicateStatus || 'Unique' }
+        ? { duplicateStatus: expense.duplicateLabel || 'Unique' }
         : {}),
     }));
 

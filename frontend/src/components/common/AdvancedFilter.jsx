@@ -34,6 +34,8 @@ export const ADVANCED_FILTER_DEFAULTS = {
   sharedOnly: '',
 };
 
+const EMPTY_OPTION = { label: 'Blank / Unassigned', value: '__empty__' };
+
 const AdvancedFilter = forwardRef(({
   onApplyFilters,
   onClearFilters,
@@ -47,11 +49,14 @@ const AdvancedFilter = forwardRef(({
   label = 'Hyper Filter',
   variant = 'outline',
   hideTrigger = false,
+  includeEmptyOption = false,
 }, ref) => {
   const [showModal, setShowModal] = useState(false);
   const [filters, setFilters] = useState({ ...ADVANCED_FILTER_DEFAULTS, ...appliedFilters });
   const serviceHandlerListId = useId();
   const cardAssignedListId = useId();
+
+  const withEmptyOption = (options) => (includeEmptyOption ? [EMPTY_OPTION, ...options] : options);
 
   useEffect(() => {
     setFilters({ ...ADVANCED_FILTER_DEFAULTS, ...appliedFilters });
@@ -128,7 +133,7 @@ const AdvancedFilter = forwardRef(({
                 name="businessUnit"
                 value={filters.businessUnit}
                 onChange={handleChange}
-                options={BUSINESS_UNITS}
+                options={withEmptyOption(BUSINESS_UNITS)}
               />
             )}
 
@@ -168,7 +173,7 @@ const AdvancedFilter = forwardRef(({
               name="status"
               value={filters.status}
               onChange={handleChange}
-              options={STATUS_OPTIONS}
+              options={withEmptyOption(STATUS_OPTIONS)}
             />
 
             {/* Type of Service */}
@@ -177,7 +182,7 @@ const AdvancedFilter = forwardRef(({
               name="typeOfService"
               value={filters.typeOfService}
               onChange={handleChange}
-              options={TYPES_OF_EXPENSE}
+              options={withEmptyOption(TYPES_OF_EXPENSE)}
             />
 
             {showServiceHandlerFilter && (
@@ -207,7 +212,7 @@ const AdvancedFilter = forwardRef(({
               name="costCenter"
               value={filters.costCenter}
               onChange={handleChange}
-              options={COST_CENTERS}
+              options={withEmptyOption(COST_CENTERS)}
             />
 
             {/* Approved By */}
@@ -216,7 +221,7 @@ const AdvancedFilter = forwardRef(({
               name="approvedBy"
               value={filters.approvedBy}
               onChange={handleChange}
-              options={APPROVED_BY}
+              options={withEmptyOption(APPROVED_BY)}
             />
 
             {/* Recurring */}
@@ -225,7 +230,7 @@ const AdvancedFilter = forwardRef(({
               name="recurring"
               value={filters.recurring}
               onChange={handleChange}
-              options={RECURRING_OPTIONS}
+              options={withEmptyOption(RECURRING_OPTIONS)}
             />
 
             {/* Duplicate Status */}
@@ -235,7 +240,10 @@ const AdvancedFilter = forwardRef(({
                 name="duplicateStatus"
                 value={filters.duplicateStatus}
                 onChange={handleChange}
-                options={['Unique', 'Merged']}
+                options={[
+                  { label: 'Duplicated', value: 'Duplicate' },
+                  { label: 'Unique', value: 'Unique' },
+                ]}
               />
             )}
 

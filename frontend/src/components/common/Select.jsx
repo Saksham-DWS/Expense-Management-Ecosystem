@@ -13,6 +13,18 @@ const Select = ({
   className = '',
   ...props
 }) => {
+  const normalizedOptions = (options || []).map((option) => {
+    if (typeof option === 'string') {
+      return { label: option, value: option };
+    }
+    if (option && typeof option === 'object') {
+      const label = option.label ?? option.value ?? '';
+      const value = option.value ?? option.label ?? '';
+      return { label, value };
+    }
+    return { label: '', value: '' };
+  });
+
   return (
     <div className={`space-y-1 ${className}`}>
       {label && (
@@ -35,9 +47,9 @@ const Select = ({
           {...props}
         >
           <option value="">{placeholder}</option>
-          {options.map((option) => (
-            <option key={option} value={option}>
-              {option}
+          {normalizedOptions.map((option, index) => (
+            <option key={`${option.value}-${index}`} value={option.value}>
+              {option.label}
             </option>
           ))}
         </select>

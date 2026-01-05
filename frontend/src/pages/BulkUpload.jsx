@@ -3,7 +3,6 @@ import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, XCircle } 
 import Layout from '../components/layout/Layout';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
-import Badge from '../components/common/Badge';
 import { bulkUploadExpenses, downloadTemplate } from '../services/expenseService';
 import { downloadFile } from '../utils/formatters';
 import toast from 'react-hot-toast';
@@ -184,7 +183,7 @@ const BulkUpload = () => {
           <Card title="Upload Results">
             <div className="space-y-4">
               {/* Summary */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="p-4 bg-blue-50 rounded-lg">
                   <div className="flex items-center space-x-2 mb-1">
                     <AlertCircle size={18} className="text-blue-600" />
@@ -199,14 +198,6 @@ const BulkUpload = () => {
                     <p className="text-sm font-medium text-green-900">Success</p>
                   </div>
                   <p className="text-2xl font-bold text-green-600">{uploadResult.success}</p>
-                </div>
-
-                <div className="p-4 bg-yellow-50 rounded-lg">
-                  <div className="flex items-center space-x-2 mb-1">
-                    <AlertCircle size={18} className="text-yellow-600" />
-                    <p className="text-sm font-medium text-yellow-900">Merged</p>
-                  </div>
-                  <p className="text-2xl font-bold text-yellow-600">{uploadResult.merged}</p>
                 </div>
 
                 <div className="p-4 bg-red-50 rounded-lg">
@@ -236,8 +227,8 @@ const BulkUpload = () => {
 
               <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                 <p className="text-sm text-green-800">
-                  <strong>{uploadResult.unique}</strong> unique entries were added to the global expense sheet.
-                  <strong> {uploadResult.merged}</strong> duplicate entries were merged.
+                  <strong>{uploadResult.success}</strong> entries were added to the global expense sheet.
+                  <strong> {uploadResult.failed}</strong> rows failed validation.
                 </p>
               </div>
             </div>

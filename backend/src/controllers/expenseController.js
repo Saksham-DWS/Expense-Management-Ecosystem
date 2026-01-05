@@ -5,6 +5,7 @@ import { generateApprovalToken } from '../utils/jwt.js';
 import { sendApprovalEmail, sendBUEntryNoticeEmail, sendMISNotificationEmail } from '../services/emailService.js';
 import { convertToINR } from '../services/currencyService.js';
 import RenewalLog from '../models/RenewalLog.js';
+import { annotateDuplicates, filterByDuplicateStatus } from '../utils/duplicateUtils.js';
 
 const validateSharedAllocations = (isShared, sharedAllocations = [], totalAmount, primaryBU) => {
   if (!isShared) return { isShared: false, sharedAllocations: [] };
@@ -40,6 +41,17 @@ const parseMultiValues = (value) =>
     .filter(Boolean) || [];
 
 const buildRegexList = (values) => values.map((val) => new RegExp(escapeRegex(val), 'i'));
+
+const EMPTY_FILTER_VALUE = '__empty__';
+
+const applyEmptyFilter = (query, field, rawValue) => {
+  if (rawValue !== EMPTY_FILTER_VALUE) return false;
+  const clause = {
+    $or: [{ [field]: { $exists: false } }, { [field]: null }, { [field]: '' }],
+  };
+  query.$and = query.$and ? [...query.$and, clause] : [clause];
+  return true;
+};
 
 const parseAmountValue = (value) => {
   if (value === undefined || value === null) return NaN;
@@ -170,29 +182,9 @@ export const createExpenseEntry = async (req, res) => {
       nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 1);
     }
 
-    // Check for duplicates
-    const duplicateEntry = await ExpenseEntry.findOne({
-      cardNumber,
-      date,
-      particulars,
-      businessUnit,
-      amount: normalizedAmount,
-      currency,
-    });
-
-    let duplicateStatus = 'Unique';
-    if (duplicateEntry) {
-      duplicateStatus = 'Merged';
-      if (duplicateEntry.duplicateStatus !== 'Merged') {
-        duplicateEntry.duplicateStatus = 'Merged';
-        await duplicateEntry.save();
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: 'Duplicate detected. Existing entry marked as merged.',
-        data: duplicateEntry,
-      });
+    let duplicateStatus = null;
+    if (['mis_manager', 'super_admin'].includes(req.user.role) && req.body?.duplicateStatus === 'Unique') {
+      duplicateStatus = 'Unique';
     }
 
     // Determine entry status based on user role
@@ -307,102 +299,125 @@ export const getExpenseEntries = async (req, res) => {
       isShared,
     } = req.query;
 
-  let query = {};
+    let query = {};
 
-  // Role-based filtering
-  if (['business_unit_admin', 'spoc', 'service_handler'].includes(req.user.role)) {
-    query.businessUnit = req.user.businessUnit;
-  }
-
-  if (req.user.role === 'service_handler') {
-    const escapedName = req.user.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const tokens = req.user.name
-      .split(' ')
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    const patternParts = [escapedName, ...tokens];
-    const pattern = patternParts.join('|');
-    query.serviceHandler = { $regex: pattern, $options: 'i' };
-  }
-
-  // Apply filters
-  if (!['business_unit_admin', 'spoc', 'service_handler'].includes(req.user.role) && businessUnit) {
-    query.businessUnit = businessUnit;
-  }
-  if (cardNumber) query.cardNumber = cardNumber;
-  if (status) query.status = status;
-  if (month) query.month = month;
-  if (typeOfService) query.typeOfService = typeOfService;
-  if (serviceHandler) applyMultiValueFilter(query, 'serviceHandler', serviceHandler);
-  if (cardAssignedTo) applyMultiValueFilter(query, 'cardAssignedTo', cardAssignedTo);
-  if (costCenter) query.costCenter = costCenter;
-  if (approvedBy) query.approvedBy = approvedBy;
-  if (recurring) query.recurring = recurring;
-  if (isShared === 'true') query.isShared = true;
-  if (isShared === 'false') query.isShared = false;
-  if (duplicateStatus && ['Merged', 'Unique'].includes(duplicateStatus)) {
-    query.duplicateStatus = duplicateStatus;
-  }
-
-  // Date range filter
-  if (startDate || endDate) {
-    query.date = {};
-    if (startDate) query.date.$gte = parseFilterDate(startDate);
-    if (endDate) query.date.$lte = parseFilterDate(endDate, true);
-  }
-
-  // Disable date range filter
-  if (disableStartDate || disableEndDate) {
-    const range = {};
-    if (disableStartDate) range.$gte = parseFilterDate(disableStartDate);
-    if (disableEndDate) range.$lte = parseFilterDate(disableEndDate, true);
-
-    // Default to deactive if caller didn't choose a status
-    if (!status) {
-      query.status = 'Deactive';
+    // Role-based filtering
+    if (['business_unit_admin', 'spoc', 'service_handler'].includes(req.user.role)) {
+      query.businessUnit = req.user.businessUnit;
     }
 
+    if (req.user.role === 'service_handler') {
+      const escapedName = req.user.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const tokens = req.user.name
+        .split(' ')
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      const patternParts = [escapedName, ...tokens];
+      const pattern = patternParts.join('|');
+      query.serviceHandler = { $regex: pattern, $options: 'i' };
+    }
+
+    // Apply filters
+    if (!['business_unit_admin', 'spoc', 'service_handler'].includes(req.user.role) && businessUnit) {
+      if (!applyEmptyFilter(query, 'businessUnit', businessUnit)) {
+        query.businessUnit = businessUnit;
+      }
+    }
+    if (cardNumber) query.cardNumber = cardNumber;
+    if (status) {
+      if (!applyEmptyFilter(query, 'status', status)) {
+        query.status = status;
+      }
+    }
+    if (month) query.month = month;
+    if (typeOfService) {
+      if (!applyEmptyFilter(query, 'typeOfService', typeOfService)) {
+        query.typeOfService = typeOfService;
+      }
+    }
+    if (serviceHandler) applyMultiValueFilter(query, 'serviceHandler', serviceHandler);
+    if (cardAssignedTo) applyMultiValueFilter(query, 'cardAssignedTo', cardAssignedTo);
+    if (costCenter) {
+      if (!applyEmptyFilter(query, 'costCenter', costCenter)) {
+        query.costCenter = costCenter;
+      }
+    }
+    if (approvedBy) {
+      if (!applyEmptyFilter(query, 'approvedBy', approvedBy)) {
+        query.approvedBy = approvedBy;
+      }
+    }
+    if (recurring) {
+      if (!applyEmptyFilter(query, 'recurring', recurring)) {
+        query.recurring = recurring;
+      }
+    }
+    if (isShared === 'true') query.isShared = true;
+    if (isShared === 'false') query.isShared = false;
+
+    // Date range filter
+    if (startDate || endDate) {
+      query.date = {};
+      if (startDate) query.date.$gte = parseFilterDate(startDate);
+      if (endDate) query.date.$lte = parseFilterDate(endDate, true);
+    }
+
+    // Disable date range filter
+    if (disableStartDate || disableEndDate) {
+      const range = {};
+      if (disableStartDate) range.$gte = parseFilterDate(disableStartDate);
+      if (disableEndDate) range.$lte = parseFilterDate(disableEndDate, true);
+
+    // Default to deactive if caller didn't choose a status
+      if (!status) {
+        query.status = 'Deactive';
+      }
+
     // Match entries with disabledAt in range OR (legacy) updatedAt in range if deactivated
-    const disableClauses = [];
-    disableClauses.push({ disabledAt: range });
-    disableClauses.push({ $and: [{ status: 'Deactive' }, { updatedAt: range }] });
-    query.$or = query.$or ? [...query.$or, ...disableClauses] : disableClauses;
-  }
+      const disableClauses = [];
+      disableClauses.push({ disabledAt: range });
+      disableClauses.push({ $and: [{ status: 'Deactive' }, { updatedAt: range }] });
+      query.$or = query.$or ? [...query.$or, ...disableClauses] : disableClauses;
+    }
 
-  // Amount range filter
-  if (minAmount || maxAmount) {
-    query.amountInINR = {};
-    if (minAmount) query.amountInINR.$gte = parseFloat(minAmount);
-    if (maxAmount) query.amountInINR.$lte = parseFloat(maxAmount);
-  }
+    // Amount range filter
+    if (minAmount || maxAmount) {
+      query.amountInINR = {};
+      if (minAmount) query.amountInINR.$gte = parseFloat(minAmount);
+      if (maxAmount) query.amountInINR.$lte = parseFloat(maxAmount);
+    }
 
-  // Search filter
-  if (search) {
-    const searchClause = [
-      { particulars: { $regex: search, $options: 'i' } },
-      { narration: { $regex: search, $options: 'i' } },
-      { cardNumber: { $regex: search, $options: 'i' } },
-      { serviceHandler: { $regex: search, $options: 'i' } },
-      { cardAssignedTo: { $regex: search, $options: 'i' } },
-    ];
-    query.$or = query.$or ? [...query.$or, ...searchClause] : searchClause;
-  }
+    // Search filter
+    if (search) {
+      const searchClause = [
+        { particulars: { $regex: search, $options: 'i' } },
+        { narration: { $regex: search, $options: 'i' } },
+        { cardNumber: { $regex: search, $options: 'i' } },
+        { serviceHandler: { $regex: search, $options: 'i' } },
+        { cardAssignedTo: { $regex: search, $options: 'i' } },
+      ];
+      query.$or = query.$or ? [...query.$or, ...searchClause] : searchClause;
+    }
 
-  // Restrict visibility: only SPOC can see their pending/rejected; others see accepted entries only
-  // Skip this restriction when explicitly filtering by disable date (we already force status Deactive)
-  if (req.user.role !== 'spoc' && !(disableStartDate || disableEndDate)) {
-    query.entryStatus = 'Accepted';
-  }
+    // Restrict visibility: only SPOC can see their pending/rejected; others see accepted entries only
+    // Skip this restriction when explicitly filtering by disable date (we already force status Deactive)
+    if (req.user.role !== 'spoc' && !(disableStartDate || disableEndDate)) {
+      query.entryStatus = 'Accepted';
+    }
 
-  const expenseEntries = await ExpenseEntry.find(query)
-    .populate('createdBy', 'name email role')
-    .sort({ date: -1 });
+    const expenseEntries = await ExpenseEntry.find(query)
+      .populate('createdBy', 'name email role')
+      .sort({ date: -1 })
+      .lean();
+
+    const annotated = annotateDuplicates(expenseEntries);
+    const filtered = filterByDuplicateStatus(annotated, duplicateStatus);
 
     res.status(200).json({
       success: true,
-      count: expenseEntries.length,
-      data: expenseEntries,
+      count: filtered.length,
+      data: filtered,
     });
   } catch (error) {
     res.status(500).json({
@@ -455,12 +470,26 @@ export const updateExpenseEntry = async (req, res) => {
     const previousStatus = expenseEntry.status;
     const previousAllocations = normalizeAllocationsForCompare(expenseEntry.sharedAllocations);
     const previousAmount = Number(expenseEntry.amount) || 0;
+    const previousDuplicateStatus = expenseEntry.duplicateStatus || null;
 
     ['typeOfService', 'costCenter', 'approvedBy', 'serviceHandler', 'recurring', 'businessUnit'].forEach((field) => {
       if (req.body[field] === '') {
         delete req.body[field];
       }
     });
+
+    if (req.body.duplicateStatus !== undefined) {
+      if (!['mis_manager', 'super_admin'].includes(req.user.role)) {
+        delete req.body.duplicateStatus;
+      } else {
+        const normalized = req.body.duplicateStatus?.toString().trim();
+        if (!normalized || normalized.toLowerCase() === 'auto') {
+          req.body.duplicateStatus = null;
+        } else if (normalized !== 'Unique') {
+          delete req.body.duplicateStatus;
+        }
+      }
+    }
 
     if (req.body.amount !== undefined) {
       const parsedAmount = parseAmountValue(req.body.amount);
@@ -519,6 +548,8 @@ export const updateExpenseEntry = async (req, res) => {
     const updatedAllocations = normalizeAllocationsForCompare(expenseEntry.sharedAllocations);
     const allocationsChanged = !allocationsEqual(previousAllocations, updatedAllocations);
     const amountChanged = previousAmount !== (Number(expenseEntry.amount) || 0);
+    const nextDuplicateStatus = expenseEntry.duplicateStatus || null;
+    const duplicateOverrideChanged = previousDuplicateStatus !== nextDuplicateStatus;
 
     // Create log when MIS/Super Admin disables a service
     if (
@@ -551,6 +582,18 @@ export const updateExpenseEntry = async (req, res) => {
         serviceHandler: expenseEntry.serviceHandler,
         action: 'SharedEdit',
         reason: reasonParts.join(' '),
+        renewalDate: new Date(),
+      });
+    }
+
+    if (duplicateOverrideChanged && ['mis_manager', 'super_admin'].includes(req.user.role)) {
+      const fromLabel = previousDuplicateStatus || 'Auto';
+      const toLabel = nextDuplicateStatus || 'Auto';
+      await RenewalLog.create({
+        expenseEntry: expenseEntry._id,
+        serviceHandler: expenseEntry.serviceHandler,
+        action: 'DuplicateOverride',
+        reason: `Duplicate status updated by ${req.user.name}: ${fromLabel} -> ${toLabel}.`,
         renewalDate: new Date(),
       });
     }

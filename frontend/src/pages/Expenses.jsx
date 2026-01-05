@@ -44,10 +44,18 @@ const Expenses = () => {
   const [exportLimit, setExportLimit] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
-  const mergedCount = expenses.filter((e) => e.duplicateStatus === 'Merged').length;
-  const uniqueCount = expenses.filter((e) => e.duplicateStatus === 'Unique').length;
+  const getDuplicateFlag = (expense) => {
+    if (expense.duplicateFlag) return expense.duplicateFlag;
+    if (typeof expense.duplicateLabel === 'string') {
+      return expense.duplicateLabel.toLowerCase().startsWith('duplicate') ? 'duplicate' : 'unique';
+    }
+    if (expense.duplicateStatus === 'Unique') return 'unique';
+    return 'unique';
+  };
+  const duplicateCount = expenses.filter((e) => getDuplicateFlag(e) === 'duplicate').length;
+  const uniqueCount = expenses.filter((e) => getDuplicateFlag(e) === 'unique').length;
   const duplicateHelp =
-    'Merged = exact duplicate entries detected against existing records. Unique = entries that do not match any existing record.';
+    'Duplicate = entries that match card, date, particulars, amount, and currency. Unique = entries with no match or manually marked unique.';
   const totalEntries = expenses.length;
   const activeServices = expenses.filter((e) => e.status === 'Active').length;
   const serviceHandlerOptions = useMemo(
@@ -119,8 +127,8 @@ const Expenses = () => {
         exportFilters.isShared = 'true';
       }
       if (canSeeDuplicateControls) {
-        if (duplicateExportMode === 'merged') {
-          exportFilters.duplicateStatus = 'Merged';
+        if (duplicateExportMode === 'duplicate') {
+          exportFilters.duplicateStatus = 'Duplicate';
         } else if (duplicateExportMode === 'unique') {
           exportFilters.duplicateStatus = 'Unique';
         } else if (!filters.duplicateStatus) {
@@ -157,6 +165,7 @@ const Expenses = () => {
       ...expense,
       date: expense.date ? expense.date.substring(0, 10) : '',
       sharedAllocations: baseAllocations,
+      duplicateStatus: expense.duplicateStatus || '',
     });
     setShowEditModal(true);
   };
@@ -233,6 +242,7 @@ const Expenses = () => {
         approvedBy: selectedExpense.approvedBy,
         serviceHandler: selectedExpense.serviceHandler,
         recurring: selectedExpense.recurring,
+        ...(canSeeDuplicateControls ? { duplicateStatus: selectedExpense.duplicateStatus || '' } : {}),
       };
 
       if (selectedExpense.isShared) {
@@ -353,6 +363,7 @@ const Expenses = () => {
                   showCardAssignedFilter={canFilterCardAssigned}
                   serviceHandlerOptions={serviceHandlerOptions}
                   cardAssignedOptions={cardAssignedOptions}
+                  includeEmptyOption
                 />
               </div>
             </div>
@@ -382,7 +393,7 @@ const Expenses = () => {
                   <div className="flex items-center gap-3">
                     <span className="text-xs uppercase tracking-[0.3em] text-slate-400">Export</span>
                     <div className="flex rounded-full border border-slate-200 bg-white/80 p-1">
-                      {['all', 'merged', 'unique'].map((mode) => (
+                      {['all', 'duplicate', 'unique'].map((mode) => (
                         <button
                           key={mode}
                           type="button"
@@ -391,8 +402,8 @@ const Expenses = () => {
                             duplicateExportMode === mode ? 'bg-primary-600 text-white' : 'text-slate-500'
                           }`}
                         >
-                          {mode === 'merged'
-                            ? `merged (${mergedCount})`
+                          {mode === 'duplicate'
+                            ? `duplicate (${duplicateCount})`
                             : mode === 'unique'
                             ? `unique (${uniqueCount})`
                             : 'all'}
@@ -527,6 +538,18 @@ const Expenses = () => {
                   required
                 />
               </div>
+              {canSeeDuplicateControls && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Select
+                    label="Duplicate Override"
+                    name="duplicateStatus"
+                    value={selectedExpense.duplicateStatus || ''}
+                    onChange={(e) => setSelectedExpense({ ...selectedExpense, duplicateStatus: e.target.value })}
+                    options={[{ label: 'Unique', value: 'Unique' }]}
+                    placeholder="Auto (use duplicate detection)"
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
                   label="Particulars"

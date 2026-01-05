@@ -530,6 +530,7 @@ const Dashboard = () => {
         showCardAssignedFilter={canFilterCardAssigned}
         serviceHandlerOptions={serviceHandlerOptions}
         cardAssignedOptions={cardAssignedOptions}
+        includeEmptyOption
       />
       <div className="space-y-6">
         <div className="rounded-3xl bg-white/95 border border-slate-100 shadow-[0_16px_40px_rgba(15,23,42,0.08)] px-6 py-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

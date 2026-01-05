@@ -14,6 +14,14 @@ const ExpenseTable = ({ expenses, onEdit, onDelete, loading, showDuplicateColumn
   const canViewDuplicateStatus = user?.role === 'mis_manager';
   const displayDuplicateColumn = canViewDuplicateStatus && showDuplicateColumn;
 
+  const resolveDuplicateMeta = (expense) => {
+    const label = expense.duplicateLabel || expense.duplicateStatus || 'Unique';
+    const flag =
+      expense.duplicateFlag ||
+      (typeof label === 'string' && label.toLowerCase().startsWith('duplicate') ? 'duplicate' : 'unique');
+    return { label, flag };
+  };
+
   const formatMonthCell = (value, fallbackDate) => {
     if (value instanceof Date) return getMonthYear(value);
     if (typeof value === 'string') {
@@ -38,20 +46,31 @@ const ExpenseTable = ({ expenses, onEdit, onDelete, loading, showDuplicateColumn
     }
   };
 
+  const compareDuplicateGroup = (a, b) => {
+    const aGroup = a.duplicateGroupKey || '';
+    const bGroup = b.duplicateGroupKey || '';
+    if (aGroup !== bGroup) return aGroup.localeCompare(bGroup);
+    const aIndex = Number(a.duplicateIndex || 0);
+    const bIndex = Number(b.duplicateIndex || 0);
+    return aIndex - bIndex;
+  };
+
   const sortedExpenses = [...expenses].sort((a, b) => {
     let aVal = a[sortField];
     let bVal = b[sortField];
 
     if (sortField === 'date') {
-      aVal = new Date(aVal);
-      bVal = new Date(bVal);
+      const aDate = new Date(aVal);
+      const bDate = new Date(bVal);
+      const diff = sortOrder === 'asc' ? aDate - bDate : bDate - aDate;
+      if (diff !== 0) return diff;
+      return compareDuplicateGroup(a, b);
     }
 
     if (sortOrder === 'asc') {
       return aVal > bVal ? 1 : -1;
-    } else {
-      return aVal < bVal ? 1 : -1;
     }
+    return aVal < bVal ? 1 : -1;
   });
 
   if (loading) {
@@ -193,11 +212,14 @@ const ExpenseTable = ({ expenses, onEdit, onDelete, loading, showDuplicateColumn
                 </td>
                 {displayDuplicateColumn && (
                   <td className="px-4 py-3 whitespace-nowrap text-sm">
-                    {expense.duplicateStatus && (
-                      <Badge variant={expense.duplicateStatus === 'Unique' ? 'success' : 'warning'}>
-                        {expense.duplicateStatus}
-                      </Badge>
-                    )}
+                    {(() => {
+                      const { label, flag } = resolveDuplicateMeta(expense);
+                      return (
+                        <Badge variant={flag === 'unique' ? 'success' : 'warning'}>
+                          {label}
+                        </Badge>
+                      );
+                    })()}
                   </td>
                 )}
                 {(canEdit || canDelete) && (
@@ -245,9 +267,11 @@ const ExpenseTable = ({ expenses, onEdit, onDelete, loading, showDuplicateColumn
                     {expense.entryStatus}
                   </Badge>
                 )}
-                {displayDuplicateColumn && expense.duplicateStatus && (
-                  <Badge variant={expense.duplicateStatus === 'Unique' ? 'success' : 'warning'}>
-                    {expense.duplicateStatus}
+                {displayDuplicateColumn && (
+                  <Badge
+                    variant={resolveDuplicateMeta(expense).flag === 'unique' ? 'success' : 'warning'}
+                  >
+                    {resolveDuplicateMeta(expense).label}
                   </Badge>
                 )}
               </div>
