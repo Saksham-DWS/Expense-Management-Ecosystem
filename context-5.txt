@@ -1,0 +1,88 @@
+**New Goal Context a feature addtion in the system which will be work and in sync with best Tailwind React UI frontend with backend and Backend Database syncing***
+
+
+
+1. Hey a problem i encountered my mis uploaded a bulk data sheet where his expense entries in negative values
+so our system took the expense entries as negative to so by which our dashboard not showing the correct 
+kpi's and dashboard bar graphs and pie charts etc like good analytics , i want the current data and in our system when in bulk upload 
+-ve negative entries will be uploaded our system converts them into normal expense entries so our system will show correct analytics and kpi's 
+make sure whenever next time or in current negative entries should be converted to normal expense entries 
+
+
+2. I observed some problems in our bulk upload system , when my MIS try to bulk Upload the data he faces very serious problems 
+just because his sheet do not have some header columns or just becasue his Business Unit entry in entires he wrote WYTLABS in caps instead in Wytlabs 
+and our system show problem in Business unit and did'nt accept the bulk entries, understand what i am saying
+
+our current system bulk upload logics are too much restrictive and harsh, I want my system bulk uplaod logic should be flexible and normalizable
+
+as we know we have in our expense entries we have drop down values in some of our columns right 
+
+like :  Status : [Active, Deactive]
+        Types of Expense : [Domain,  Google, Google Adwords Expense, Hosting, Proxy, Server, Service, Tool]
+        Busines Unit Names : [DWSG, Signature, Collabx, Wytlabs, Smegoweb]
+        Cost Center : [Ops,  FE, OH Exps, Support, Management EXPS]
+        Approved By : [Vaibhav,  Marc, Dawood, Raghav, Tarun, Yulia, Sarthak, Harshit]
+        Recurring : [Monthy, Yearly, One-time]
+
+I want my system should normalize them and be flexible , 
+
+for example :  
+
+case 1  :  If the column headers will be of small case letter or big case letter it should still map and accept the bulk uploaded entries also if the headers column level entries should also of mix characters or the drop down entries should also be mixed chars like DWSG or dwsg or WYTLABS, or instead of it is TOOL or in any case , our system should understand it and map it and accept in the system as 
+new entries
+
+for example like  : it should accept and map it accordingly and name wise 
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+
+| Card Number  | Card Assigned To   | Date       | Month     | Status    | Particulars            | NARRATION                  | Currency | Bill Status | Amount    | XE RATE | Amount in INR | Types of Tools or Service  | Business Unit | Cost Center | Approved By | Service Handler  | Recurring |
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+
+| M 336        | Raghav             | 02/12/2025 | Dec-25    | Active    | Google Workspace       | Google GSUITE_hreflang     | USD      | —           |  62.53    | 90      |  5,627.70     | Tool                       | WYTLABS       | OH Eps      | Marc        | Vivek            | Monthly   |
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+
+| M 336        | Raghav             | 02/12/2025 | Dec-25    | Active    | Mailgun                | SINCH MAILGUN              | USD      | —           |  75.00    | 90      |  6,750.00     | Tool                       | COLLabx       | FE          | harSHIT     | Vivek            | Yearly    |
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+
+| M 336        | Raghav             | 03/12/2025 | Dec-25    | Active    | Waybackdownloader.com  | WAYBACKDOWNLOADER.COM      | USD      | —           | 95.00     | 90      | 8,550.00      | Tool                       | Dwsg          | fe          | MARC        | Vivek            | One-TIME  |
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+
+
+
+case 2 : Also i encountered another problem is my MIS sheet lacks some of the columns entries and he left some of the entries columns empty so our system did not accept that entry and full bulk data 
+my view is it should accept cause we already give the mis and admin a capability of edit so they can updated those entries empty columns fields in future after upload and accepting of the expense entries
+cause in current for example : if some of the expense entires Status is not inputed Active or Deactive our system is currently rejecting it 
+which is unaccptable , our system should accept those blank fields too so in future MIS and admin can updated those entries empty fields and save them so our entries will be completed
+
+for example : 
+
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+
+| Card Number  | Card Assigned To   | Date       | Month     | Status    | Particulars            | NARRATION                  | Currency | Bill Status | Amount    | XE RATE | Amount in INR | Types of Tools or Service  | Business Unit | Cost Center | Approved By | Service Handler  | Recurring |
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+
+| M 336        | Raghav             | 02/12/2025 | Dec-25    | Active    | Google Workspace       | Google GSUITE_hreflang     | USD      | —           |  62.53    |         |  5,627.70     | Tool                       | WYTLABS       | OH Eps      | Marc        | Vivek            | Monthly   |
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+
+| M 336        | Raghav             | 02/12/2025 | Dec-25    | Deactive  | Mailgun                | SINCH MAILGUN              | USD      | —           |  75.00    |         |  6,750.00     | HOSTING                    | COLLabx       | FE          | harSHIT     |                  |           |
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+
+| M 336        | Raghav             | 03/12/2025 | Dec-25    |           | Waybackdownloader.com  | WAYBACKDOWNLOADER.COM      | USD      | —           | 95.00     |         | 8,550.00      |                            | Dwsg          | fe          | MARC        | Saksham          | One-TIME  |
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+
+| M 336        | Raghav             | 03/12/2025 | Dec-25    | Active    | WOO-5111349142         | WOO-5111349142             | USD      | —           |  29.00    | 90      |  2,610.00     | SERvice                    | Ops           |             | Marc        |                  |           |
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+
+| M 336        | Raghav             | 03/12/2025 | Dec-25    |           | Adsy                   | ADS* WWW.ADSY.COM          | USD      | —           |  1,000.00 |         |  90,000.00    |                            | Ops           |             |             | Vivek            | Monthly   |
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+
+
+should accept empty fields entries too even if the empty fields are of dropable entries as Our MIS and Admin can update those entries in future after acceptance of 
+bulk upload data entries and our system make them normalize to our system level and do mappings correctly and accordingly to each row and columns and headers.
+
+
+case 3 : 
+for above case easy soultion after our system accept those unstructured and normalized entries with correct mappings,
+we will give the toogle drop down button in our hyper filter for the MIS and admin in global expense sheet so that they can add empty inputs to that of some empty columns rows or entries which not available at the time of upload,
+
+for example : In these drop down hyper filter values by which we select and filter the expense sheet entries, 
+
+in those drop down value we will give blank entries drop down so in those drop down in combination when user like admin and mis manager
+apply those empty filter in those field the entries will comes up and show with the empty data entries , so for the easy the mis and admin can
+apply empty drop filter and that will easy for them to edit those entries whose data or inputs are empty , and fill them and save them.
+
+ Status : [Active, Deactive]
+        Types of Expense : [Domain,  Google, Google Adwords Expense, Hosting, Proxy, Server, Service, Tool, ]
+        Busines Unit Names : [DWSG, Signature, Collabx, Wytlabs, Smegoweb, ]
+        Cost Center : [Ops,  FE, OH Exps, Support, Management EXPS, ]
+        Approved By : [Vaibhav,  Marc, Dawood, Raghav, Tarun, Yulia, Sarthak, Harshit, ]
+        Recurring : [Monthy, Yearly, One-time, ]
+
+and these will also work in combination with all filters and show results accordingly

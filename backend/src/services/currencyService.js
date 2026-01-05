@@ -15,7 +15,7 @@ export const getExchangeRate = async (fromCurrency = 'USD', toCurrency = 'INR') 
 
     // Fetch new rates
     const response = await axios.get(process.env.CURRENCY_API_URL || 'https://api.exchangerate-api.com/v4/latest/USD');
-    cachedRates = response.data.rates;
+    cachedRates = response.data.rates || response.data.conversion_rates;
     lastFetchTime = now;
 
     return calculateRate(fromCurrency, toCurrency, cachedRates);

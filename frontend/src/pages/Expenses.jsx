@@ -28,6 +28,7 @@ const Expenses = () => {
   const canSeeDuplicateControls = user?.role === 'mis_manager';
   const canFilterBusinessUnit = ['mis_manager', 'super_admin'].includes(user?.role);
   const canEditCardAssignedTo = user?.role === 'mis_manager';
+  const canEditBusinessUnit = ['mis_manager', 'super_admin'].includes(user?.role);
   const canFilterServiceHandler = ['mis_manager', 'super_admin', 'business_unit_admin', 'spoc'].includes(user?.role);
   const canFilterCardAssigned = ['mis_manager', 'super_admin', 'business_unit_admin', 'spoc'].includes(user?.role);
   const canEditSharedAllocations = ['mis_manager', 'super_admin'].includes(user?.role);
@@ -222,6 +223,7 @@ const Expenses = () => {
         date: selectedExpense.date,
         month: selectedExpense.month,
         cardAssignedTo: selectedExpense.cardAssignedTo,
+        ...(canEditBusinessUnit ? { businessUnit: selectedExpense.businessUnit } : {}),
         particulars: selectedExpense.particulars,
         narration: selectedExpense.narration,
         currency: selectedExpense.currency,
@@ -480,7 +482,17 @@ const Expenses = () => {
             <form onSubmit={handleUpdateExpense} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Input label="Card Number" value={selectedExpense.cardNumber} disabled />
-                <Input label="Business Unit" value={selectedExpense.businessUnit} disabled />
+                {canEditBusinessUnit ? (
+                  <Select
+                    label="Business Unit"
+                    name="businessUnit"
+                    value={selectedExpense.businessUnit || ''}
+                    onChange={(e) => setSelectedExpense({ ...selectedExpense, businessUnit: e.target.value })}
+                    options={BUSINESS_UNITS}
+                  />
+                ) : (
+                  <Input label="Business Unit" value={selectedExpense.businessUnit || ''} disabled />
+                )}
                 <Input
                   label="Card Assigned To"
                   name="cardAssignedTo"

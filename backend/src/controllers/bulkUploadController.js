@@ -189,6 +189,10 @@ const normalizeMonthValue = (raw, fallbackDate) => {
     if (/^[A-Za-z]{3}[- ]\d{4}$/.test(trimmed)) {
       return trimmed.replace(' ', '-');
     }
+    if (/^[A-Za-z]{3}[- ]\d{2}$/.test(trimmed)) {
+      const [month, year] = trimmed.replace(' ', '-').split('-');
+      return `${month}-${year.length === 2 ? `20${year}` : year}`;
+    }
     return trimmed;
   }
   return fallbackDate ? formatMonthLabel(fallbackDate) : '';
@@ -231,6 +235,29 @@ const parseBoolean = (value) => {
   return ['true', 'yes', 'y', '1', 'shared', 'checked'].includes(norm);
 };
 
+const parseAmountValue = (value) => {
+  if (value === undefined || value === null) return NaN;
+  if (typeof value === 'number') return value;
+  const text = value.toString().trim();
+  if (!text) return NaN;
+  const isParen = /^\(.*\)$/.test(text);
+  const cleaned = text.replace(/[^0-9.-]/g, '');
+  const parsed = Number(cleaned);
+  if (Number.isNaN(parsed)) return NaN;
+  return isParen ? -Math.abs(parsed) : parsed;
+};
+
+const normalizeTextValue = (value) => {
+  if (value === undefined || value === null) return '';
+  const text = value.toString().trim();
+  if (!text) return '';
+  const collapsed = text.replace(/\s+/g, ' ');
+  const lowered = collapsed.toLowerCase();
+  if (['-', 'na', 'n/a', 'null', 'none'].includes(lowered)) return '';
+  if (/^[-\u2014]+$/.test(collapsed)) return '';
+  return collapsed;
+};
+
 const parseSharedAllocations = (raw, normalizeBusinessUnit) => {
   if (!raw) return [];
 
@@ -239,7 +266,8 @@ const parseSharedAllocations = (raw, normalizeBusinessUnit) => {
     return raw
       .map((item) => {
         const bu = normalizeBusinessUnit(item.businessUnit || item.bu || item.unit);
-        const amount = Number(item.amount ?? item.value ?? item.share);
+        const amountValue = parseAmountValue(item.amount ?? item.value ?? item.share);
+        const amount = Number.isNaN(amountValue) ? 0 : Math.abs(amountValue);
         return bu && amount > 0 ? { businessUnit: bu, amount } : null;
       })
       .filter(Boolean);
@@ -265,10 +293,11 @@ const parseSharedAllocations = (raw, normalizeBusinessUnit) => {
 
   const allocations = [];
   for (const part of parts) {
-    const match = part.match(/(.+?)[\s:=\-]+([\d.,]+)/);
+    const match = part.match(/(.+?)[\s:=\-]+([()\-.\d,]+)/);
     if (!match) continue;
     const bu = normalizeBusinessUnit(match[1]);
-    const amt = parseFloat(match[2].replace(/[^0-9.-]/g, ''));
+    const parsedAmount = parseAmountValue(match[2]);
+    const amt = Number.isNaN(parsedAmount) ? NaN : Math.abs(parsedAmount);
     if (bu && !Number.isNaN(amt) && amt > 0) {
       allocations.push({ businessUnit: bu, amount: amt });
     }
@@ -327,18 +356,20 @@ export const bulkUploadExpenses = async (req, res) => {
           'cardNumber',
           'Card No',
         ]);
-        const cardNumber = rawCardNumber?.toString().trim();
+        const cardNumber = normalizeTextValue(rawCardNumber);
 
         const rawAssigned = getField(row, ['Card Assigned To', 'cardAssignedTo', 'Card assigned to']);
-        const cardAssignedTo = rawAssigned?.toString().trim();
+        const cardAssignedTo = normalizeTextValue(rawAssigned);
         const date = getField(row, ['Date', 'date']);
-        const rawMonth = getField(row, ['Month', 'month']);
+        const rawMonth = normalizeTextValue(getField(row, ['Month', 'month']));
         // Enum maps
         const typeMap = {
           'tool & service': 'Service',
           'tools & service': 'Service',
           'tool & services': 'Service',
           'tools & services': 'Service',
+          'tools': 'Tool',
+          'services': 'Service',
           'tool': 'Tool',
           'service': 'Service',
           'google adwords expenses': 'Google Adwords Expense',
@@ -357,21 +388,34 @@ export const bulkUploadExpenses = async (req, res) => {
 
         const costCenterMap = {
           'ops': 'Ops',
+          'op': 'Ops',
           'oh exps': 'OH Exps',
           'oh exps.': 'OH Exps',
+          'oh eps': 'OH Exps',
+          'oh eps.': 'OH Exps',
+          'oh exp': 'OH Exps',
+          'oh exp.': 'OH Exps',
+          'oh expenses': 'OH Exps',
+          'opex': 'OH Exps',
           'fe': 'FE',
           'support': 'Support',
           'management exps': 'Management EXPS',
           'management exps.': 'Management EXPS',
+          'management exp': 'Management EXPS',
+          'management expenses': 'Management EXPS',
         };
         const allowedCostCenters = ['Ops', 'FE', 'OH Exps', 'Support', 'Management EXPS'];
 
         const businessUnitMap = {
           'dws g': 'DWSG',
           'dwsg': 'DWSG',
+          'dws': 'DWSG',
           'signature': 'Signature',
           'collabx': 'Collabx',
           'wytlabs': 'Wytlabs',
+          'wyt labs': 'Wytlabs',
+          'wyt-labs': 'Wytlabs',
+          'wytlab': 'Wytlabs',
           'smegoweb': 'Smegoweb',
           'shared': 'Wytlabs',
           'excel forum': 'Wytlabs',
@@ -383,6 +427,8 @@ export const bulkUploadExpenses = async (req, res) => {
         const statusMap = {
           'deactive-nextmonth': 'Deactive',
           'deactivate-nextmonth': 'Deactive',
+          'inactive': 'Deactive',
+          'deactivated': 'Deactive',
         };
         const allowedStatus = ['Active', 'Deactive', 'Declined'];
 
@@ -408,24 +454,28 @@ export const bulkUploadExpenses = async (req, res) => {
           'Harshit',
         ];
 
-        const statusRaw = (getField(row, ['Status', 'status']) || 'Active').toString().trim();
-        const status = normalizeEnum(statusRaw, statusMap, allowedStatus) || 'Active';
-        const particulars =
+        const statusRaw = normalizeTextValue(getField(row, ['Status', 'status']));
+        const status = normalizeEnum(statusRaw || 'Active', statusMap, allowedStatus) || 'Active';
+        const particulars = normalizeTextValue(
           getField(row, [
             'Particulars',
             'particulars',
             'Particulars - from cc statement',
             'Particulars - from the statement',
-          ]) || '';
+          ])
+        );
         const narrationRaw = getField(row, [
           'Narration',
           'narration',
           'Narration - from statement',
           'Narration - from the statement',
         ]);
-        const narration = narrationRaw ? narrationRaw.toString().trim() : '';
-        const currency = (getField(row, ['Currency', 'currency']) || 'USD').toString().trim();
-        const billStatus = `${getField(row, ['Bill Status', 'billStatus']) || ''}`.trim();
+        const narration = normalizeTextValue(narrationRaw);
+        const currencyRaw = normalizeTextValue(getField(row, ['Currency', 'currency'])) || 'USD';
+        const allowedCurrencies = ['USD', 'EUR', 'GBP', 'INR', 'AUD', 'CAD'];
+        const currencyCandidate = currencyRaw.toUpperCase();
+        const currency = allowedCurrencies.includes(currencyCandidate) ? currencyCandidate : 'USD';
+        const billStatus = normalizeTextValue(getField(row, ['Bill Status', 'billStatus']));
         const amountRaw = getField(row, [
           'Amount',
           'amount',
@@ -433,51 +483,68 @@ export const bulkUploadExpenses = async (req, res) => {
           'Amt',
           'Amt (USD/Euro/Any)',
         ]);
-        const amount = parseFloat(amountRaw ? amountRaw.toString().replace(/,/g, '') : '');
-        const typeOfServiceRaw =
+        const amountValue = parseAmountValue(amountRaw);
+        const amount = Number.isNaN(amountValue) ? NaN : Math.abs(amountValue);
+        const typeOfServiceRaw = normalizeTextValue(
           getField(row, [
             'Types of Tools or Service',
             'Type of Tool or Service',
             'typeOfService',
             'Type',
             'Type of Tool or Service*',
-          ]) || '';
-        const typeOfService = normalizeEnum(typeOfServiceRaw, typeMap, allowedTypes);
+          ])
+        );
+        const typeOfService = normalizeEnum(typeOfServiceRaw, typeMap, allowedTypes) || undefined;
 
-        const businessUnitRaw = (getField(row, ['Business Unit', 'businessUnit']) || '').toString().trim();
-        const businessUnit = normalizeEnum(businessUnitRaw, businessUnitMap, allowedBusinessUnits);
+        const businessUnitRaw = normalizeTextValue(getField(row, ['Business Unit', 'businessUnit']));
+        const businessUnit =
+          normalizeEnum(businessUnitRaw, businessUnitMap, allowedBusinessUnits) ||
+          normalizeEnum(req.user?.businessUnit, businessUnitMap, allowedBusinessUnits) ||
+          undefined;
 
-        const costCenterRaw = getField(row, ['Cost Center', 'costCenter']);
-        const costCenter = normalizeEnum(costCenterRaw, costCenterMap, allowedCostCenters);
+        const costCenterRaw = normalizeTextValue(getField(row, ['Cost Center', 'costCenter']));
+        const costCenter = normalizeEnum(costCenterRaw, costCenterMap, allowedCostCenters) || undefined;
 
-        const approvedByRaw = getField(row, ['Approved By', 'approvedBy']);
-        const approvedBy = normalizeEnum(approvedByRaw, approvedByMap, allowedApprovedBy);
+        const approvedByRaw = normalizeTextValue(getField(row, ['Approved By', 'approvedBy']));
+        const approvedBy = normalizeEnum(approvedByRaw, approvedByMap, allowedApprovedBy) || undefined;
         const serviceHandler =
-          getField(row, [
-            'Tool or Service Handler',
-            'Tool or Service Handler (User Name)',
-            'serviceHandler',
-            'Service Handler',
-          ]) || '';
+          normalizeTextValue(
+            getField(row, [
+              'Tool or Service Handler',
+              'Tool or Service Handler (User Name)',
+              'serviceHandler',
+              'Service Handler',
+            ])
+          ) || undefined;
         // Normalize recurring values
-        let recurringRaw = row['Recurring/One-time'] || row['Recurring/One time'] || row['recurring'] || row['Recurring'] || 'One-time';
+        const recurringRaw = normalizeTextValue(
+          getField(row, ['Recurring/One-time', 'Recurring/One time', 'recurring', 'Recurring'])
+        );
         const recurringMap = {
-          Recurring_M: 'Monthly',
-          Recurring_Y: 'Yearly',
-          'OneTime': 'One-time',
-          'One Time': 'One-time',
-          'One-time': 'One-time',
-          Monthly: 'Monthly',
-          Yearly: 'Yearly',
+          'recurring_m': 'Monthly',
+          'recurring_y': 'Yearly',
+          'one time': 'One-time',
+          'one-time': 'One-time',
+          'one_time': 'One-time',
+          'onetime': 'One-time',
+          'monthly': 'Monthly',
+          'monthy': 'Monthly',
+          'month': 'Monthly',
+          'yearly': 'Yearly',
+          'year': 'Yearly',
+          'annual': 'Yearly',
+          'annually': 'Yearly',
         };
-        const recurring = recurringMap[recurringRaw] || 'One-time';
+        const allowedRecurring = ['Monthly', 'Yearly', 'One-time'];
+        const recurring = normalizeEnum(recurringRaw, recurringMap, allowedRecurring) || undefined;
         // Shared fields (optional)
         const normalizeBU = (val) => normalizeEnum(val, businessUnitMap, allowedBusinessUnits);
         const isSharedRaw =
           getField(row, ['Is Shared', 'isShared', 'Shared', 'shared', 'Shared Bill?']) ?? false;
         const sharedAllocRaw =
-          getField(row, ['Shared Bill', 'Shared Bills', 'sharedBill', 'sharedAllocation', 'sharedAllocations']) ??
-          '';
+          normalizeTextValue(
+            getField(row, ['Shared Bill', 'Shared Bills', 'sharedBill', 'sharedAllocation', 'sharedAllocations'])
+          ) ?? '';
         let sharedAllocations = parseSharedAllocations(sharedAllocRaw, normalizeBU);
         let isShared = parseBoolean(isSharedRaw) || sharedAllocations.length > 0;
 
@@ -514,32 +581,12 @@ export const bulkUploadExpenses = async (req, res) => {
         if (!date) missing.push('Date');
         if (!particulars) missing.push('Particulars');
         if (Number.isNaN(amount)) missing.push('Amount');
-        if (!businessUnit) missing.push('Business Unit');
 
         if (missing.length) {
           results.failed++;
           const message = `Missing required fields: ${missing.join(', ')}`;
           results.errors.push({
             row: i + 2, // Excel row number (1-indexed + header)
-            error: message,
-            data: row,
-          });
-          console.warn(`[Bulk Upload] Row ${i + 2} failed. ${message}`);
-          continue;
-        }
-
-        // Validate enums after normalization
-        const enumErrors = [];
-        if (!typeOfService) enumErrors.push(`Type of Service (value: ${typeOfServiceRaw || 'empty'})`);
-        if (!businessUnit) enumErrors.push(`Business Unit (value: ${businessUnitRaw || 'empty'})`);
-        if (!costCenter) enumErrors.push(`Cost Center (value: ${costCenterRaw || 'empty'})`);
-        if (!approvedBy) enumErrors.push(`Approved By (value: ${approvedByRaw || 'empty'})`);
-
-        if (enumErrors.length) {
-          results.failed++;
-          const message = `Invalid enum: ${enumErrors.join(', ')}`;
-          results.errors.push({
-            row: i + 2,
             error: message,
             data: row,
           });
@@ -565,18 +612,21 @@ export const bulkUploadExpenses = async (req, res) => {
         const monthLabel = normalizeMonthValue(rawMonth, parsedDate);
 
         // Exchange rate handling: prefer provided XE, else fetch
-        const providedRate = parseFloat(row['XE'] || row['xe'] || row['XE Rate'] || row['xeRate']);
+        const providedRate = parseFloat(
+          getField(row, ['XE', 'xe', 'XE Rate', 'xeRate', 'XE RATE'])
+        );
         let rate = providedRate;
         if (!rate || Number.isNaN(rate)) {
           const converted = await convertToINR(amount, currency);
           rate = converted.rate;
         }
+        rate = Math.abs(rate);
         // Amount in INR handling: prefer provided, else compute
-        const providedInINR = parseFloat(
-          row['Amt INR'] || row['Amount in INR'] || row['amountInINR'] || row['Amount (INR)']
+        const providedInINRValue = parseAmountValue(
+          getField(row, ['Amt INR', 'Amount in INR', 'amountInINR', 'Amount (INR)'])
         );
         const amountInINR =
-          providedInINR && !Number.isNaN(providedInINR) ? providedInINR : amount * rate;
+          !Number.isNaN(providedInINRValue) ? Math.abs(providedInINRValue) : amount * rate;
 
         // Calculate next renewal date
         let nextRenewalDate = null;

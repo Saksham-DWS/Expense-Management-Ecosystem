@@ -61,32 +61,31 @@ const expenseEntrySchema = new mongoose.Schema(
     typeOfService: {
       type: String,
       enum: ['Domain', 'Google', 'Google Adwords Expense', 'Hosting', 'Proxy', 'Server', 'Service', 'Tool'],
-      required: true,
+      required: false,
     },
     businessUnit: {
       type: String,
       enum: ['DWSG', 'Signature', 'Collabx', 'Wytlabs', 'Smegoweb'],
-      required: true,
+      required: false,
     },
     costCenter: {
       type: String,
       enum: ['Ops', 'FE', 'OH Exps', 'Support', 'Management EXPS'],
-      required: true,
+      required: false,
     },
     approvedBy: {
       type: String,
       enum: ['Vaibhav', 'Marc', 'Dawood', 'Raghav', 'Tarun', 'Yulia', 'Sarthak', 'Harshit'],
-      required: true,
+      required: false,
     },
     serviceHandler: {
       type: String,
-      required: true,
       trim: true,
     },
     recurring: {
       type: String,
       enum: ['Monthly', 'Yearly', 'One-time'],
-      required: true,
+      required: false,
     },
     entryStatus: {
       type: String,

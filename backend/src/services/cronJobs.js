@@ -48,6 +48,44 @@ const buildNamePattern = (name) => {
   return new RegExp(pattern, 'i');
 };
 
+// Normalize negative amounts to positive values (one-time fix on boot)
+export const normalizeNegativeAmounts = async () => {
+  try {
+    const result = await ExpenseEntry.updateMany(
+      {
+        $or: [
+          { amount: { $lt: 0 } },
+          { amountInINR: { $lt: 0 } },
+          { 'sharedAllocations.amount': { $lt: 0 } },
+        ],
+      },
+      [
+        {
+          $set: {
+            amount: { $abs: '$amount' },
+            amountInINR: { $abs: '$amountInINR' },
+            sharedAllocations: {
+              $map: {
+                input: { $ifNull: ['$sharedAllocations', []] },
+                as: 'alloc',
+                in: {
+                  businessUnit: '$$alloc.businessUnit',
+                  amount: { $abs: { $ifNull: ['$$alloc.amount', 0] } },
+                },
+              },
+            },
+          },
+        },
+      ],
+      { updatePipeline: true }
+    );
+
+    console.log(`Normalized ${result.modifiedCount || 0} entries with negative amounts`);
+  } catch (error) {
+    console.error('Error normalizing negative amounts:', error);
+  }
+};
+
 // Check if a renewal action already exists for this cycle (Continue/Cancel/DisableByMIS)
 const hasRenewalAction = async (entryId, renewalDate) => {
   if (!entryId || !renewalDate) return false;
@@ -244,7 +282,8 @@ export const scheduleExchangeRateRefresh = () => {
                 amountInINR: { $multiply: ['$amount', rate] },
               },
             },
-          ]
+          ],
+          { updatePipeline: true }
         );
         console.log(`Updated XE rate for ${currency} -> INR at ${rate}`);
       }
@@ -356,6 +395,7 @@ export const scheduleAutoCancellationNotices = () => {
 // Initialize all cron jobs
 export const initializeCronJobs = () => {
   console.log('Initializing cron jobs...');
+  normalizeNegativeAmounts();
   scheduleRenewalReminders();
   scheduleRejectedEntriesCleanup();
   scheduleRenewalFlagReset();
@@ -366,6 +406,7 @@ export const initializeCronJobs = () => {
 
 export default {
   initializeCronJobs,
+  normalizeNegativeAmounts,
   scheduleRenewalReminders,
   scheduleRejectedEntriesCleanup,
   scheduleRenewalFlagReset,

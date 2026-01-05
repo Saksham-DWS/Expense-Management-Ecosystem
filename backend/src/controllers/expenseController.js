@@ -8,10 +8,11 @@ import RenewalLog from '../models/RenewalLog.js';
 
 const validateSharedAllocations = (isShared, sharedAllocations = [], totalAmount, primaryBU) => {
   if (!isShared) return { isShared: false, sharedAllocations: [] };
+  const safeTotal = normalizePositiveAmount(totalAmount);
   const cleaned = (sharedAllocations || [])
     .map((item) => ({
       businessUnit: item.businessUnit,
-      amount: Number(item.amount) || 0,
+      amount: normalizePositiveAmount(item.amount),
     }))
     .filter((item) => item.businessUnit && item.amount > 0);
 
@@ -22,7 +23,7 @@ const validateSharedAllocations = (isShared, sharedAllocations = [], totalAmount
   }
 
   const total = cleaned.reduce((sum, item) => sum + item.amount, 0);
-  if (total > Number(totalAmount || 0)) {
+  if (total > safeTotal) {
     throw new Error('Shared allocations exceed total amount');
   }
 
@@ -39,6 +40,24 @@ const parseMultiValues = (value) =>
     .filter(Boolean) || [];
 
 const buildRegexList = (values) => values.map((val) => new RegExp(escapeRegex(val), 'i'));
+
+const parseAmountValue = (value) => {
+  if (value === undefined || value === null) return NaN;
+  if (typeof value === 'number') return value;
+  const text = value.toString().trim();
+  if (!text) return NaN;
+  const isParen = /^\(.*\)$/.test(text);
+  const cleaned = text.replace(/[^0-9.-]/g, '');
+  const parsed = Number(cleaned);
+  if (Number.isNaN(parsed)) return NaN;
+  return isParen ? -Math.abs(parsed) : parsed;
+};
+
+const normalizePositiveAmount = (value) => {
+  const parsed = parseAmountValue(value);
+  if (Number.isNaN(parsed)) return 0;
+  return Math.abs(parsed);
+};
 
 const applyMultiValueFilter = (query, field, rawValue) => {
   const values = parseMultiValues(rawValue);
@@ -118,13 +137,22 @@ export const createExpenseEntry = async (req, res) => {
       }
     }
 
+    const parsedAmount = parseAmountValue(amount);
+    if (Number.isNaN(parsedAmount)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid amount value',
+      });
+    }
+    const normalizedAmount = Math.abs(parsedAmount);
+
     // Get current exchange rate
-    const { rate, amountInINR } = await convertToINR(amount, currency);
+    const { rate, amountInINR } = await convertToINR(normalizedAmount, currency);
 
     // Validate shared allocations
     let sharedPayload = { isShared: false, sharedAllocations: [] };
     try {
-      sharedPayload = validateSharedAllocations(isShared, sharedAllocations, amount, businessUnit);
+      sharedPayload = validateSharedAllocations(isShared, sharedAllocations, normalizedAmount, businessUnit);
     } catch (err) {
       return res.status(400).json({
         success: false,
@@ -148,7 +176,7 @@ export const createExpenseEntry = async (req, res) => {
       date,
       particulars,
       businessUnit,
-      amount,
+      amount: normalizedAmount,
       currency,
     });
 
@@ -187,9 +215,9 @@ export const createExpenseEntry = async (req, res) => {
       narration,
       currency,
       billStatus,
-      amount,
-      xeRate: rate,
-      amountInINR,
+      amount: normalizedAmount,
+      xeRate: Math.abs(rate),
+      amountInINR: Math.abs(amountInINR),
       typeOfService,
       businessUnit,
       costCenter,
@@ -428,6 +456,19 @@ export const updateExpenseEntry = async (req, res) => {
     const previousAllocations = normalizeAllocationsForCompare(expenseEntry.sharedAllocations);
     const previousAmount = Number(expenseEntry.amount) || 0;
 
+    ['typeOfService', 'costCenter', 'approvedBy', 'serviceHandler', 'recurring', 'businessUnit'].forEach((field) => {
+      if (req.body[field] === '') {
+        delete req.body[field];
+      }
+    });
+
+    if (req.body.amount !== undefined) {
+      const parsedAmount = parseAmountValue(req.body.amount);
+      if (!Number.isNaN(parsedAmount)) {
+        req.body.amount = Math.abs(parsedAmount);
+      }
+    }
+
     // Shared allocation validation (if provided)
     if (req.body.isShared !== undefined || req.body.sharedAllocations !== undefined) {
       try {
@@ -455,9 +496,14 @@ export const updateExpenseEntry = async (req, res) => {
     if (req.body.amount || req.body.currency) {
       const amount = req.body.amount || expenseEntry.amount;
       const currency = req.body.currency || expenseEntry.currency;
-      const { rate, amountInINR } = await convertToINR(amount, currency);
-      req.body.xeRate = rate;
-      req.body.amountInINR = amountInINR;
+      const parsedAmount = parseAmountValue(amount);
+      const normalizedAmount = Number.isNaN(parsedAmount)
+        ? normalizePositiveAmount(expenseEntry.amount)
+        : Math.abs(parsedAmount);
+      const { rate, amountInINR } = await convertToINR(normalizedAmount, currency);
+      req.body.amount = normalizedAmount;
+      req.body.xeRate = Math.abs(rate);
+      req.body.amountInINR = Math.abs(amountInINR);
     }
 
     // If status moved to Deactive, stamp disabledAt and log
