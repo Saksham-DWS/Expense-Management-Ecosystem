@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Filter, Download, Upload, CheckCircle2, ListChecks } from 'lucide-react';
+import { Search, Filter, Download, Upload, CheckCircle2, ListChecks, Send } from 'lucide-react';
 import Layout from '../components/layout/Layout';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -8,7 +8,15 @@ import Select from '../components/common/Select';
 import ExpenseTable from '../components/dashboard/ExpenseTable';
 import Modal from '../components/common/Modal';
 import AdvancedFilter, { ADVANCED_FILTER_DEFAULTS } from '../components/common/AdvancedFilter';
-import { getExpenses, exportExpenses, deleteExpense, updateExpense, bulkDeleteExpenses } from '../services/expenseService';
+import {
+  getExpenses,
+  exportExpenses,
+  deleteExpense,
+  updateExpense,
+  bulkDeleteExpenses,
+  resendMisNotification,
+  bulkResendMisNotifications,
+} from '../services/expenseService';
 import { useAuth } from '../context/AuthContext';
 import {
   STATUS_OPTIONS,
@@ -33,6 +41,7 @@ const Expenses = () => {
   const canFilterCardAssigned = ['mis_manager', 'super_admin', 'business_unit_admin', 'spoc'].includes(user?.role);
   const canEditSharedAllocations = ['mis_manager', 'super_admin'].includes(user?.role);
   const canBulkDelete = ['mis_manager', 'super_admin'].includes(user?.role);
+  const canResendMis = ['mis_manager', 'super_admin'].includes(user?.role);
   const createDefaultFilters = () => ({ ...ADVANCED_FILTER_DEFAULTS });
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -187,6 +196,25 @@ const Expenses = () => {
     }
   };
 
+  const handleResendMis = async (expense) => {
+    if (!expense?._id) return;
+    try {
+      const response = await resendMisNotification(expense._id);
+      const summary = response?.data;
+      const label = expense.particulars ? ` for ${expense.particulars}` : '';
+      if (summary) {
+        const detail = summary.failed
+          ? ` (${summary.success} sent, ${summary.failed} failed)`
+          : ` (${summary.success} sent)`;
+        toast.success(`MIS resend${label}${detail}`);
+      } else {
+        toast.success(`MIS resend${label} completed`);
+      }
+    } catch (error) {
+      toast.error('Failed to resend MIS email');
+    }
+  };
+
   const toggleBulkDelete = () => {
     setBulkDeleteEnabled((prev) => {
       const next = !prev;
@@ -308,6 +336,29 @@ const Expenses = () => {
     }
   };
 
+  const handleBulkResendMis = async () => {
+    if (selectedIds.length === 0) return;
+    const confirmed = window.confirm(
+      `Resend MIS emails for ${selectedIds.length} selected entries?`
+    );
+    if (!confirmed) return;
+
+    try {
+      const response = await bulkResendMisNotifications(selectedIds);
+      const summary = response?.data;
+      if (summary) {
+        const sent = summary.totalEmails ? `${summary.emailSuccess}/${summary.totalEmails}` : `${summary.emailSuccess}`;
+        const skipped = summary.entriesSkipped ? `, ${summary.entriesSkipped} skipped` : '';
+        const missing = summary.entriesMissing ? `, ${summary.entriesMissing} missing` : '';
+        toast.success(`MIS resend done: ${sent} emails sent${skipped}${missing}`);
+      } else {
+        toast.success('MIS resend completed');
+      }
+    } catch (error) {
+      toast.error('Failed to resend MIS emails');
+    }
+  };
+
   const pageExpenses = expenses.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
   const pageIds = pageExpenses.map((expense) => expense._id);
   const handleToggleSelectAll = () => {
@@ -420,7 +471,17 @@ const Expenses = () => {
                     variant={bulkDeleteEnabled ? 'primary' : 'secondary'}
                     onClick={toggleBulkDelete}
                   >
-                    Bulk delete
+                    Select entries
+                  </Button>
+                )}
+                {bulkDeleteEnabled && (
+                  <Button
+                    variant="secondary"
+                    onClick={handleBulkResendMis}
+                    disabled={selectedIds.length === 0 || !canResendMis}
+                  >
+                    <Send size={18} className="mr-2" />
+                    Resend MIS ({selectedIds.length})
                   </Button>
                 )}
                 {bulkDeleteEnabled && (
@@ -511,6 +572,7 @@ const Expenses = () => {
             expenses={pageExpenses}
             onEdit={handleEdit}
             onDelete={handleDelete}
+            onResendMis={canResendMis ? handleResendMis : undefined}
             loading={loading}
             showDuplicateColumn={canSeeDuplicateControls && showDuplicateStatus}
             bulkDeleteEnabled={bulkDeleteEnabled}

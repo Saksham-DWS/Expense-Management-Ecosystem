@@ -42,6 +42,16 @@ export const bulkDeleteExpenses = async (ids = []) => {
   return response.data;
 };
 
+export const resendMisNotification = async (id) => {
+  const response = await api.post(`/expenses/${id}/resend-mis`);
+  return response.data;
+};
+
+export const bulkResendMisNotifications = async (ids = []) => {
+  const response = await api.post('/expenses/bulk-resend-mis', { ids });
+  return response.data;
+};
+
 export const bulkUploadExpenses = async (file) => {
   const formData = new FormData();
   formData.append('file', file);

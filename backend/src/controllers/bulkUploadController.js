@@ -471,6 +471,24 @@ export const bulkUploadExpenses = async (req, res) => {
       await Promise.allSettled(batch);
     };
 
+    const queueMISNotification = (misEmail, entryDetails, submittedBy) => {
+      if (!misEmail) return;
+      emailTasks.push(
+        sendMISNotificationEmail(misEmail, entryDetails, submittedBy).then((sent) => {
+          if (!sent) {
+            console.warn('[Bulk Upload] MIS email failed', {
+              email: misEmail,
+              entryId: entryDetails?._id?.toString?.() || entryDetails?._id,
+              particulars: entryDetails?.particulars,
+              businessUnit: entryDetails?.businessUnit,
+              cardNumber: entryDetails?.cardNumber,
+            });
+          }
+          return sent;
+        })
+      );
+    };
+
     for (let i = 0; i < data.length; i++) {
       try {
         const row = data[i];
@@ -839,10 +857,10 @@ export const bulkUploadExpenses = async (req, res) => {
           }
         }
 
-        if (isActiveStatus && misManagers.length > 0) {
+        if (createdEntry.entryStatus === 'Accepted' && misManagers.length > 0) {
           misManagers.forEach((mis) => {
             if (mis.email) {
-              emailTasks.push(sendMISNotificationEmail(mis.email, createdEntry, submittedBy));
+              queueMISNotification(mis.email, createdEntry, submittedBy);
             }
           });
         }

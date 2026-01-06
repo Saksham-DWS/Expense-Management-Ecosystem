@@ -127,6 +127,40 @@ const parseNameList = (value) =>
     .map((item) => item.trim())
     .filter(Boolean) || [];
 
+const resolveSubmittedBy = (entry, fallbackUser) =>
+  entry?.cardAssignedTo || entry?.createdBy?.name || fallbackUser?.name || 'MIS';
+
+const sendMisNotificationsForEntry = async (entry, submittedBy, cachedMisManagers = null) => {
+  const misManagers =
+    cachedMisManagers || (await User.find({ role: 'mis_manager', isActive: true }).lean());
+  const recipients = misManagers.filter((mis) => mis.email);
+  if (recipients.length === 0) {
+    return { total: 0, success: 0, failed: 0 };
+  }
+
+  const results = await Promise.allSettled(
+    recipients.map((mis) => sendMISNotificationEmail(mis.email, entry, submittedBy))
+  );
+
+  let success = 0;
+  let failed = 0;
+  results.forEach((result, index) => {
+    const email = recipients[index]?.email;
+    if (result.status === 'fulfilled' && result.value) {
+      success += 1;
+      return;
+    }
+    failed += 1;
+    console.warn('[MIS Email] Failed to send notification', {
+      email,
+      entryId: entry?._id?.toString?.() || entry?._id,
+      error: result.status === 'rejected' ? result.reason?.message || result.reason : 'send-failed',
+    });
+  });
+
+  return { total: recipients.length, success, failed };
+};
+
 // @desc    Create new expense entry
 // @route   POST /api/expenses
 // @access  Private (SPOC, MIS, Super Admin, Business Unit Admin)
@@ -251,15 +285,20 @@ export const createExpenseEntry = async (req, res) => {
     });
 
     const isActiveStatus = (status || '').toString().toLowerCase() === 'active';
-    if (entryStatus === 'Accepted' && isActiveStatus && businessUnit) {
-      const uploaderName = req.user?.name || 'MIS';
-      const misManagers = await User.find({ role: 'mis_manager', isActive: true });
-      const misEmailSet = new Set(
+    const uploaderName = req.user?.name || 'MIS';
+    let misManagers = [];
+    let misEmailSet = new Set();
+
+    if (entryStatus === 'Accepted') {
+      misManagers = await User.find({ role: 'mis_manager', isActive: true }).lean();
+      misEmailSet = new Set(
         misManagers
           .map((mis) => mis.email?.toLowerCase())
           .filter((email) => email)
       );
+    }
 
+    if (entryStatus === 'Accepted' && isActiveStatus && businessUnit) {
       // Notify BU admins (always for accepted active entries)
       const businessUnitAdmins = await User.find({
         role: 'business_unit_admin',
@@ -319,13 +358,14 @@ export const createExpenseEntry = async (req, res) => {
 
       await Promise.all([
         ...[...spocEmails].map((email) => sendSpocEntryEmail(email, expenseEntry, uploaderName)),
-        ...[...handlerEmails].map((email) => sendServiceHandlerEntryEmail(email, expenseEntry, uploaderName)),
+        ...[...handlerEmails].map((email) =>
+          sendServiceHandlerEntryEmail(email, expenseEntry, uploaderName)
+        ),
       ]);
+    }
 
-      // Notify MIS (all MIS users)
-      await Promise.all(
-        misManagers.map((mis) => sendMISNotificationEmail(mis.email, expenseEntry, uploaderName))
-      );
+    if (entryStatus === 'Accepted') {
+      await sendMisNotificationsForEntry(expenseEntry, uploaderName, misManagers);
     }
 
     res.status(201).json({
@@ -798,6 +838,133 @@ export const bulkDeleteExpenseEntries = async (req, res) => {
   }
 };
 
+// @desc    Resend MIS notification email for a single entry
+// @route   POST /api/expenses/:id/resend-mis
+// @access  Private (MIS, Super Admin)
+export const resendMISNotification = async (req, res) => {
+  try {
+    const expenseEntry = await ExpenseEntry.findById(req.params.id).populate(
+      'createdBy',
+      'name'
+    );
+
+    if (!expenseEntry) {
+      return res.status(404).json({
+        success: false,
+        message: 'Expense entry not found',
+      });
+    }
+
+    if (expenseEntry.entryStatus !== 'Accepted') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only accepted entries can be resent to MIS',
+      });
+    }
+
+    const submittedBy = resolveSubmittedBy(expenseEntry, req.user);
+    const summary = await sendMisNotificationsForEntry(expenseEntry, submittedBy);
+
+    res.status(200).json({
+      success: true,
+      message: 'MIS notification resend completed',
+      data: {
+        entryId: expenseEntry._id,
+        ...summary,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Resend MIS notification emails for multiple entries
+// @route   POST /api/expenses/bulk-resend-mis
+// @access  Private (MIS, Super Admin)
+export const bulkResendMISNotifications = async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    if (ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No expense entries selected for MIS resend',
+      });
+    }
+
+    const entries = await ExpenseEntry.find({ _id: { $in: ids } }).populate(
+      'createdBy',
+      'name'
+    );
+    const entryMap = new Map(entries.map((entry) => [entry._id.toString(), entry]));
+    const missingIds = ids.filter((id) => !entryMap.has(id.toString()));
+
+    const misManagers = await User.find({ role: 'mis_manager', isActive: true }).lean();
+    const results = [];
+    let totalEmails = 0;
+    let emailSuccess = 0;
+    let emailFailed = 0;
+    let entriesSent = 0;
+    let entriesSkipped = 0;
+    let entriesMissing = missingIds.length;
+
+    for (const entry of entries) {
+      const entryId = entry._id.toString();
+      if (entry.entryStatus !== 'Accepted') {
+        entriesSkipped += 1;
+        results.push({
+          entryId,
+          status: 'skipped',
+          reason: 'Entry not accepted',
+        });
+        continue;
+      }
+
+      const submittedBy = resolveSubmittedBy(entry, req.user);
+      const summary = await sendMisNotificationsForEntry(entry, submittedBy, misManagers);
+      entriesSent += 1;
+      totalEmails += summary.total;
+      emailSuccess += summary.success;
+      emailFailed += summary.failed;
+      results.push({
+        entryId,
+        status: 'sent',
+        ...summary,
+      });
+    }
+
+    missingIds.forEach((id) => {
+      results.push({
+        entryId: id,
+        status: 'missing',
+        reason: 'Entry not found',
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Bulk MIS resend completed',
+      data: {
+        totalRequested: ids.length,
+        entriesSent,
+        entriesSkipped,
+        entriesMissing,
+        totalEmails,
+        emailSuccess,
+        emailFailed,
+        results,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 // @desc    Approve expense entry (via email link)
 // @route   GET /api/expenses/approve/:token
 // @access  Public
@@ -969,6 +1136,8 @@ export default {
   updateExpenseEntry,
   deleteExpenseEntry,
   bulkDeleteExpenseEntries,
+  resendMISNotification,
+  bulkResendMISNotifications,
   approveExpenseEntry,
   rejectExpenseEntry,
   getExpenseStats,

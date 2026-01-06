@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Edit, Trash2 } from 'lucide-react';
+import { Edit, Send, Trash2 } from 'lucide-react';
 import Badge from '../common/Badge';
 import { formatCurrency, formatDate, getMonthYear } from '../../utils/formatters';
 import { useAuth } from '../../context/AuthContext';
@@ -14,6 +14,7 @@ const ExpenseTable = ({
   selectedIds = [],
   onToggleSelect,
   onToggleSelectAll,
+  onResendMis,
 }) => {
   const { user } = useAuth();
   const [sortField, setSortField] = useState('date');
@@ -21,6 +22,8 @@ const ExpenseTable = ({
 
   const canEdit = ['mis_manager', 'super_admin'].includes(user?.role);
   const canDelete = ['mis_manager', 'super_admin'].includes(user?.role);
+  const canResendMis =
+    ['mis_manager', 'super_admin'].includes(user?.role) && typeof onResendMis === 'function';
   const canViewDuplicateStatus = user?.role === 'mis_manager';
   const displayDuplicateColumn = canViewDuplicateStatus && showDuplicateColumn;
   const selectedSet = new Set(selectedIds);
@@ -138,7 +141,7 @@ const ExpenseTable = ({
                   Duplicate
                 </th>
               )}
-              {(canEdit || canDelete) && (
+              {(canEdit || canDelete || canResendMis) && (
                 <th className="px-4 py-3 text-left text-[0.7rem] font-semibold uppercase tracking-[0.3em] text-slate-400">
                   Actions
                 </th>
@@ -247,9 +250,18 @@ const ExpenseTable = ({
                     })()}
                   </td>
                 )}
-                {(canEdit || canDelete) && (
+                {(canEdit || canDelete || canResendMis) && (
                   <td className="px-4 py-3 whitespace-nowrap text-sm">
                     <div className="flex space-x-2">
+                      {canResendMis && expense.entryStatus === 'Accepted' && (
+                        <button
+                          onClick={() => onResendMis(expense)}
+                          className="rounded-full bg-sky-50 p-2 text-sky-600 hover:bg-sky-100"
+                          title="Resend MIS email"
+                        >
+                          <Send size={16} />
+                        </button>
+                      )}
                       {canEdit && (
                         <button
                           onClick={() => onEdit(expense)}
@@ -369,8 +381,16 @@ const ExpenseTable = ({
               </div>
             </div>
 
-            {(canEdit || canDelete) && (
+            {(canEdit || canDelete || canResendMis) && (
               <div className="mt-4 flex items-center justify-end gap-2">
+                {canResendMis && expense.entryStatus === 'Accepted' && (
+                  <button
+                    onClick={() => onResendMis(expense)}
+                    className="rounded-full bg-sky-50 px-3 py-2 text-sky-700 text-sm font-semibold hover:bg-sky-100"
+                  >
+                    Resend MIS
+                  </button>
+                )}
                 {canEdit && (
                   <button
                     onClick={() => onEdit(expense)}

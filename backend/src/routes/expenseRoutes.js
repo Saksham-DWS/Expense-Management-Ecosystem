@@ -6,6 +6,8 @@ import {
   updateExpenseEntry,
   deleteExpenseEntry,
   bulkDeleteExpenseEntries,
+  resendMISNotification,
+  bulkResendMISNotifications,
   approveExpenseEntry,
   rejectExpenseEntry,
   getExpenseStats,
@@ -44,11 +46,14 @@ router.post(
 );
 
 router.post('/bulk-delete', authorize('mis_manager', 'super_admin'), bulkDeleteExpenseEntries);
+router.post('/bulk-resend-mis', authorize('mis_manager', 'super_admin'), bulkResendMISNotifications);
 
 router
   .route('/:id')
   .get(getExpenseEntry)
   .put(authorize('mis_manager', 'super_admin'), updateExpenseEntry)
   .delete(authorize('mis_manager', 'super_admin'), deleteExpenseEntry);
+
+router.post('/:id/resend-mis', authorize('mis_manager', 'super_admin'), resendMISNotification);
 
 export default router;
