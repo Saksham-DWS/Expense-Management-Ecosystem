@@ -253,6 +253,12 @@ export const createExpenseEntry = async (req, res) => {
     const isActiveStatus = (status || '').toString().toLowerCase() === 'active';
     if (entryStatus === 'Accepted' && isActiveStatus && businessUnit) {
       const uploaderName = req.user?.name || 'MIS';
+      const misManagers = await User.find({ role: 'mis_manager', isActive: true });
+      const misEmailSet = new Set(
+        misManagers
+          .map((mis) => mis.email?.toLowerCase())
+          .filter((email) => email)
+      );
 
       // Notify BU admins (always for accepted active entries)
       const businessUnitAdmins = await User.find({
@@ -270,7 +276,10 @@ export const createExpenseEntry = async (req, res) => {
             relatedEntry: expenseEntry._id,
             actionRequired: false,
           });
-          await sendBUEntryNoticeEmail(admin.email, expenseEntry, uploaderName);
+          const adminEmail = admin.email?.toLowerCase();
+          if (adminEmail && !misEmailSet.has(adminEmail)) {
+            await sendBUEntryNoticeEmail(admin.email, expenseEntry, uploaderName);
+          }
         })
       );
 
@@ -288,7 +297,8 @@ export const createExpenseEntry = async (req, res) => {
           name: new RegExp(`^${escapeRegex(spocName)}$`, 'i'),
         });
         spocUsers.forEach((spoc) => {
-          if (spoc.email) spocEmails.add(spoc.email);
+          const email = spoc.email?.toLowerCase();
+          if (email && !misEmailSet.has(email)) spocEmails.add(spoc.email);
         });
       }
 
@@ -302,7 +312,8 @@ export const createExpenseEntry = async (req, res) => {
           name: new RegExp(`^${escapeRegex(handlerName)}$`, 'i'),
         });
         handlerUsers.forEach((handler) => {
-          if (handler.email) handlerEmails.add(handler.email);
+          const email = handler.email?.toLowerCase();
+          if (email && !misEmailSet.has(email)) handlerEmails.add(handler.email);
         });
       }
 
@@ -312,7 +323,6 @@ export const createExpenseEntry = async (req, res) => {
       ]);
 
       // Notify MIS (all MIS users)
-      const misManagers = await User.find({ role: 'mis_manager' });
       await Promise.all(
         misManagers.map((mis) => sendMISNotificationEmail(mis.email, expenseEntry, uploaderName))
       );

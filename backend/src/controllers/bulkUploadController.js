@@ -422,6 +422,11 @@ export const bulkUploadExpenses = async (req, res) => {
     };
 
     const misManagers = await User.find({ role: 'mis_manager', isActive: true }).lean();
+    const misEmailSet = new Set(
+      misManagers
+        .map((mis) => mis.email?.toLowerCase())
+        .filter((email) => email)
+    );
     const serviceHandlerCache = new Map();
     const spocCache = new Map();
     const buAdminCache = new Map();
@@ -787,13 +792,16 @@ export const bulkUploadExpenses = async (req, res) => {
         results.success++;
 
         const isActiveStatus = (status || '').toString().toLowerCase() === 'active';
+        const uploaderName = req.user?.name || 'MIS';
+        const submittedBy = cardAssignedTo || uploaderName;
+
         if (isActiveStatus && businessUnit) {
-          const uploaderName = req.user?.name || 'MIS';
           const spocNames = parseNameList(cardAssignedTo);
           for (const spocName of spocNames) {
             const spocUsers = await getUsersByName(spocName, 'spoc', businessUnit, spocCache);
             spocUsers.forEach((user) => {
-              if (user.email) {
+              const email = user.email?.toLowerCase();
+              if (email && !misEmailSet.has(email)) {
                 emailTasks.push(sendSpocEntryEmail(user.email, createdEntry, uploaderName));
               }
             });
@@ -803,16 +811,17 @@ export const bulkUploadExpenses = async (req, res) => {
           for (const handlerName of handlerNames) {
             const handlerUsers = await getUsersByName(handlerName, 'service_handler', businessUnit, serviceHandlerCache);
             handlerUsers.forEach((user) => {
-              if (user.email) {
+              const email = user.email?.toLowerCase();
+              if (email && !misEmailSet.has(email)) {
                 emailTasks.push(sendServiceHandlerEntryEmail(user.email, createdEntry, uploaderName));
               }
             });
           }
 
           const buAdmins = await getBUAdmins(businessUnit);
-          const submittedBy = cardAssignedTo || uploaderName;
           for (const admin of buAdmins) {
-            if (admin.email) {
+            const adminEmail = admin.email?.toLowerCase();
+            if (adminEmail && !misEmailSet.has(adminEmail)) {
               emailTasks.push(sendBUEntryNoticeEmail(admin.email, createdEntry, submittedBy));
             }
             await Notification.create({
@@ -825,17 +834,21 @@ export const bulkUploadExpenses = async (req, res) => {
             });
           }
 
-          if (misManagers.length > 0) {
-            misManagers.forEach((mis) => {
-              if (mis.email) {
-                emailTasks.push(sendMISNotificationEmail(mis.email, createdEntry, submittedBy));
-              }
-            });
-          }
-
           if (emailTasks.length >= 25) {
             await flushEmailTasks();
           }
+        }
+
+        if (isActiveStatus && misManagers.length > 0) {
+          misManagers.forEach((mis) => {
+            if (mis.email) {
+              emailTasks.push(sendMISNotificationEmail(mis.email, createdEntry, submittedBy));
+            }
+          });
+        }
+
+        if (emailTasks.length >= 25) {
+          await flushEmailTasks();
         }
       } catch (error) {
         results.failed++;
