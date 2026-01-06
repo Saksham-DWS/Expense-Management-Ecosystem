@@ -29,10 +29,13 @@ const mapRenewalLog = (log) => {
   const isMisDisable = log.action === 'DisableByMIS';
   const isSharedEdit = log.action === 'SharedEdit';
   const isDuplicateOverride = log.action === 'DuplicateOverride';
+  const isDeleteEntry = log.action === 'DeleteEntry';
   return {
     id: log._id,
     type: isDuplicateOverride
       ? 'duplicate_override'
+      : isDeleteEntry
+      ? 'delete_entry'
       : isSharedEdit
       ? 'shared_edit'
       : isMisDisable
@@ -42,6 +45,8 @@ const mapRenewalLog = (log) => {
       : 'continue',
     action: isDuplicateOverride
       ? 'Duplicate override'
+      : isDeleteEntry
+      ? 'Entry deleted'
       : isSharedEdit
       ? 'Shared allocation update'
       : isMisDisable
@@ -49,7 +54,15 @@ const mapRenewalLog = (log) => {
       : isCancel
       ? 'Disable Request'
       : 'Continue Service',
-    status: isDuplicateOverride ? entry?.status : isSharedEdit ? entry?.status : isMisDisable ? 'Deactive' : 'Active',
+    status: isDeleteEntry
+      ? 'Deleted'
+      : isDuplicateOverride
+      ? entry?.status
+      : isSharedEdit
+      ? entry?.status
+      : isMisDisable
+      ? 'Deactive'
+      : 'Active',
     service: entry?.particulars,
     businessUnit: entry?.businessUnit,
     serviceHandler: log.serviceHandler,

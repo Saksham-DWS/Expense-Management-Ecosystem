@@ -184,3 +184,70 @@ now after edit marked Unique
 +--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+---------------
 | M 336        | Raghav             | 05/12/2025 | Dec-25    | Active    | SMTP2GO                | SMTP2GO, I* SMTP2GO EM     | USD      | —           | 15.00     | 90      | 1,350.00      | Tool                       | Wytlabs       | —           | Marc        | Vivek            | One-time  |  Unique
 +--
+
+
+
+
+
+
+4. I observed that as Like super admin in global expense sheet MIS don'nt have deleted the entry access in actions so kindly enable 
+the delete button in MIS global expense sheet , also when a entry or multiple entries will be deleted either by MIS and Super Admin kindly 
+also log that this and that entry has been removed by the MIS or Super Admin if they delete any of the entries.
+
+Also my MIS told me to give the bulk deleted option to the MIS view in global expense sheet when toggle bulk delete
+in front of the each entry a check box will be enabled for bulk delete so when mis select those entries one by one check those entries,
+and went up on the expense sheet and click bulk delete where select number of entries show under that button and when click bulk delete
+those entries who are check will be deleted from the system , this system is asked by mis cause if there are 5 duplicated entries and 3 are accaptable 
+entries and mis wanted to deleted multiple entries so he can do in one time
+
+for example :
+
+MIS global expense sheet panel near search , or hyper filter we will apply this toggle button
+
+Example UI when bulk delete not selected :
+
++--------------------------+  +--------------+  +-------+ +--------------+  +-------------+
+| search                   |  | Apply search |  | Clear | | Hyper Filter |  | Bulk delete |
++--------------------------+  +--------------+  +-------+ +--------------+  +-------------+
+
+When bulk deleted clicked and select toggle available in full global expense sheet and user select some of the entries :
+
++--------------------------+  +--------------+  +-------+ +--------------+  +-------------+ +----------------+
+| search                   |  | Apply search |  | Clear | | Hyper Filter |  | Bulk delete | | delete now (3) | 
++--------------------------+  +--------------+  +-------+ +--------------+  +-------------+ +----------------+
+
+small the search bar and adjust all UI of this page like logical filterations like search  bar, clear, apply search, bulk delete and if toggle on delete now button adjust UI's of these
+in sync with the system.
+
+example sheet  : 
+if bulk toggle on :
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+--------------+--------------+------------+
+| Card Number  | Card Assigned To   | Date       | Month     | Status    | Particulars            | Narration                  | Currency | Bill Status | Amount    | XE Rate | Amount in INR | Types of Tools or Service  | Business Unit | Cost Center | Approved By | Service Handler  | Recurring | Dupliacted   |Actions       | bulk toggle|
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+--------------+--------------+------------|
+| M 336        | Raghav             | 02/12/2025 | Dec-25    | Active    | Google Workspace       | Google GSUITE_hreflang     | USD      | —           | -62.53    | 90      | -5,627.70     | Tool                       | DWSG          | —           | Marc        | Vivek            | Monthly   |  Unique      | edit /delete |  ticked   
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+-----------------------------+-------------
+| M 336        | Raghav             | 02/12/2025 | Dec-25    | Active    | Google Workspace       | Google GSUITE_hreflang     | USD      | —           | -62.53    | 90      | -5,627.70     | Tool                       | DWSG          | —           | Marc        | Vivek            | Monthly   |   Unique     | edit /delete |             
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+--------------+--------------+-------------
+| M 336        | Raghav             | 04/12/2025 | Dec-25    | Active    | Notion                 | NOTION.SO SUBSCRIPTION     | USD      | —           | -20.00    | 90      | -1,800.00     | Tool                       |               | Ops         | Marc        | Vivek            | Monthly   | Unique       | edit /delete | ticked
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+-----------------------------+-------------
+| M 336        | Raghav             | 04/12/2025 | Dec-25    | Active    | Slack                  | SLACK TECHNOLOGIES INC     | USD      | —           | -50.00    | 90      | -4,500.00     | Tool                       |               | Ops         | Marc        | Vivek            | Monthly   | Unique       | edit /delete | ticked
++--------------+--------------------+------------+-----------+-----------+------------------------+----------------------------+----------+-------------+-----------+---------+---------------+----------------------------+---------------+-------------+-------------+------------------+-----------+-----------------------------+
+
+
+
+
+4. Hey i wanted to check is email system is working fine, 
+
+when a mis or super admin bulk upload the data 
+and if data have Status active and have business unit name and service handler name and spoc name like card assign to
+in the bulk data after uploading the data , if those users like spoc and service handler 
+each will get each entry email that a A entry has been added on your name for service handler with all entry details
+and and to spoc that a service entry has been added on business unit by your name as you are a card assign to
+person, and mis also get the purchase email of each entry 
+
+for example  : 400 entries added all spocs and related service handlers will get email , of new entry added 
+and all 400 entry each entry mail went to mis too
+
+And all spocs and service handlers were existed in the system and they already have the account in the system
+
+is this system is working 

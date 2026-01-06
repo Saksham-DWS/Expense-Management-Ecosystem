@@ -5,6 +5,7 @@ import {
   getExpenseEntry,
   updateExpenseEntry,
   deleteExpenseEntry,
+  bulkDeleteExpenseEntries,
   approveExpenseEntry,
   rejectExpenseEntry,
   getExpenseStats,
@@ -42,10 +43,12 @@ router.post(
   bulkUploadExpenses
 );
 
+router.post('/bulk-delete', authorize('mis_manager', 'super_admin'), bulkDeleteExpenseEntries);
+
 router
   .route('/:id')
   .get(getExpenseEntry)
   .put(authorize('mis_manager', 'super_admin'), updateExpenseEntry)
-  .delete(authorize('super_admin'), deleteExpenseEntry);
+  .delete(authorize('mis_manager', 'super_admin'), deleteExpenseEntry);
 
 export default router;

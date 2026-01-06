@@ -4,15 +4,28 @@ import Badge from '../common/Badge';
 import { formatCurrency, formatDate, getMonthYear } from '../../utils/formatters';
 import { useAuth } from '../../context/AuthContext';
 
-const ExpenseTable = ({ expenses, onEdit, onDelete, loading, showDuplicateColumn = true }) => {
+const ExpenseTable = ({
+  expenses,
+  onEdit,
+  onDelete,
+  loading,
+  showDuplicateColumn = true,
+  bulkDeleteEnabled = false,
+  selectedIds = [],
+  onToggleSelect,
+  onToggleSelectAll,
+}) => {
   const { user } = useAuth();
   const [sortField, setSortField] = useState('date');
   const [sortOrder, setSortOrder] = useState('desc');
 
   const canEdit = ['mis_manager', 'super_admin'].includes(user?.role);
-  const canDelete = user?.role === 'super_admin';
+  const canDelete = ['mis_manager', 'super_admin'].includes(user?.role);
   const canViewDuplicateStatus = user?.role === 'mis_manager';
   const displayDuplicateColumn = canViewDuplicateStatus && showDuplicateColumn;
+  const selectedSet = new Set(selectedIds);
+  const allVisibleSelected =
+    bulkDeleteEnabled && expenses.length > 0 && expenses.every((expense) => selectedSet.has(expense._id));
 
   const resolveDuplicateMeta = (expense) => {
     const label = expense.duplicateLabel || expense.duplicateStatus || 'Unique';
@@ -130,6 +143,18 @@ const ExpenseTable = ({ expenses, onEdit, onDelete, loading, showDuplicateColumn
                   Actions
                 </th>
               )}
+              {bulkDeleteEnabled && (
+                <th className="px-4 py-3 text-left text-[0.7rem] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <div className="flex items-center gap-2">
+                    <span>Select</span>
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={() => onToggleSelectAll && onToggleSelectAll()}
+                    />
+                  </div>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -244,6 +269,15 @@ const ExpenseTable = ({ expenses, onEdit, onDelete, loading, showDuplicateColumn
                     </div>
                   </td>
                 )}
+                {bulkDeleteEnabled && (
+                  <td className="px-4 py-3 whitespace-nowrap text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedSet.has(expense._id)}
+                      onChange={() => onToggleSelect && onToggleSelect(expense._id)}
+                    />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -260,7 +294,14 @@ const ExpenseTable = ({ expenses, onEdit, onDelete, loading, showDuplicateColumn
                 <p className="text-base font-semibold text-slate-900">{formatDate(expense.date)}</p>
                 <p className="text-sm text-slate-600 mt-1">{expense.cardNumber || '-'}</p>
               </div>
-              <div className="flex flex-wrap gap-2 justify-end">
+              <div className="flex flex-wrap gap-2 justify-end items-start">
+                {bulkDeleteEnabled && (
+                  <input
+                    type="checkbox"
+                    checked={selectedSet.has(expense._id)}
+                    onChange={() => onToggleSelect && onToggleSelect(expense._id)}
+                  />
+                )}
                 {expense.status && <Badge>{expense.status}</Badge>}
                 {expense.entryStatus && (
                   <Badge variant={expense.entryStatus === 'Accepted' ? 'success' : expense.entryStatus === 'Rejected' ? 'danger' : 'warning'}>

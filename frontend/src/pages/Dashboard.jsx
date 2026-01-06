@@ -35,7 +35,7 @@ import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Loading from '../components/common/Loading';
 import AdvancedFilter, { ADVANCED_FILTER_DEFAULTS } from '../components/common/AdvancedFilter';
-import { getExpenseStats, getExpenses, exportExpenses } from '../services/expenseService';
+import { getExpenses, exportExpenses } from '../services/expenseService';
 import { downloadFile, formatCurrency, formatDate, getRoleName } from '../utils/formatters';
 import { useAuth } from '../context/AuthContext';
 
@@ -96,7 +96,6 @@ const Dashboard = () => {
   const { user } = useAuth();
   const filterRef = useRef(null);
   const createDefaultFilters = useCallback(() => ({ ...ADVANCED_FILTER_DEFAULTS }), []);
-  const [stats, setStats] = useState(null);
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -128,15 +127,7 @@ const Dashboard = () => {
   const loadInitialDashboard = useCallback(async () => {
     try {
       setLoading(true);
-      const [statsResponse, expenseResponse] = await Promise.all([
-        getExpenseStats(),
-        getExpenses({ ...createDefaultFilters(), search: '' }),
-      ]);
-
-      if (statsResponse.success) {
-        setStats(statsResponse.data);
-      }
-
+      const expenseResponse = await getExpenses({ ...createDefaultFilters(), search: '' });
       if (expenseResponse.success) {
         setExpenses(expenseResponse.data);
       }
@@ -504,8 +495,8 @@ const Dashboard = () => {
   const canExport = ['mis_manager', 'super_admin', 'business_unit_admin', 'spoc', 'service_handler'].includes(user?.role);
 
   const systemTotals = {
-    totalExpenses: stats?.overall?.totalExpenses || 0,
-    totalEntries: stats?.overall?.totalEntries || 0,
+    totalExpenses: totals.totalExpenses,
+    totalEntries: totals.expenseCount,
   };
 
   if (loading) {

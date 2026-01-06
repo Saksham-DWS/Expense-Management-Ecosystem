@@ -616,7 +616,7 @@ export const updateExpenseEntry = async (req, res) => {
 // @access  Private (Super Admin)
 export const deleteExpenseEntry = async (req, res) => {
   try {
-    const expenseEntry = await ExpenseEntry.findByIdAndDelete(req.params.id);
+    const expenseEntry = await ExpenseEntry.findById(req.params.id);
 
     if (!expenseEntry) {
       return res.status(404).json({
@@ -625,9 +625,66 @@ export const deleteExpenseEntry = async (req, res) => {
       });
     }
 
+    const actorLabel = req.user?.role === 'mis_manager' ? 'MIS Manager' : 'Super Admin';
+    await RenewalLog.create({
+      expenseEntry: expenseEntry._id,
+      serviceHandler: expenseEntry.serviceHandler || expenseEntry.cardAssignedTo || 'Unknown',
+      action: 'DeleteEntry',
+      reason: `Entry deleted by ${actorLabel} (${req.user?.name || 'System'}): ${expenseEntry.particulars || 'Entry'} | Card ${expenseEntry.cardNumber || '-'} | Amount ${expenseEntry.amount || 0} ${expenseEntry.currency || ''}.`,
+      renewalDate: new Date(),
+    });
+
+    await ExpenseEntry.findByIdAndDelete(req.params.id);
+
     res.status(200).json({
       success: true,
       message: 'Expense entry deleted successfully',
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Bulk delete expense entries
+// @route   POST /api/expenses/bulk-delete
+// @access  Private (MIS, Super Admin)
+export const bulkDeleteExpenseEntries = async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    if (ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No expense entries selected for deletion',
+      });
+    }
+
+    const entries = await ExpenseEntry.find({ _id: { $in: ids } });
+    if (entries.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No matching expense entries found',
+      });
+    }
+
+    const actorLabel = req.user?.role === 'mis_manager' ? 'MIS Manager' : 'Super Admin';
+    const now = new Date();
+    const logs = entries.map((entry) => ({
+      expenseEntry: entry._id,
+      serviceHandler: entry.serviceHandler || entry.cardAssignedTo || 'Unknown',
+      action: 'DeleteEntry',
+      reason: `Entry deleted by ${actorLabel} (${req.user?.name || 'System'}): ${entry.particulars || 'Entry'} | Card ${entry.cardNumber || '-'} | Amount ${entry.amount || 0} ${entry.currency || ''}.`,
+      renewalDate: now,
+    }));
+
+    await RenewalLog.insertMany(logs);
+    await ExpenseEntry.deleteMany({ _id: { $in: ids } });
+
+    res.status(200).json({
+      success: true,
+      deleted: entries.length,
     });
   } catch (error) {
     res.status(500).json({
@@ -807,6 +864,7 @@ export default {
   getExpenseEntry,
   updateExpenseEntry,
   deleteExpenseEntry,
+  bulkDeleteExpenseEntries,
   approveExpenseEntry,
   rejectExpenseEntry,
   getExpenseStats,

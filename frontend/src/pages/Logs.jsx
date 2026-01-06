@@ -20,6 +20,8 @@ const toneForAction = (type) => {
       return { variant: 'info', label: 'Continue' };
     case 'shared_edit':
       return { variant: 'info', label: 'Shared Edit' };
+    case 'delete_entry':
+      return { variant: 'danger', label: 'Entry Deleted' };
     default:
       return { variant: 'default', label: type };
   }

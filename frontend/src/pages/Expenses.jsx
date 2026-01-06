@@ -8,7 +8,7 @@ import Select from '../components/common/Select';
 import ExpenseTable from '../components/dashboard/ExpenseTable';
 import Modal from '../components/common/Modal';
 import AdvancedFilter, { ADVANCED_FILTER_DEFAULTS } from '../components/common/AdvancedFilter';
-import { getExpenses, exportExpenses, deleteExpense, updateExpense } from '../services/expenseService';
+import { getExpenses, exportExpenses, deleteExpense, updateExpense, bulkDeleteExpenses } from '../services/expenseService';
 import { useAuth } from '../context/AuthContext';
 import {
   STATUS_OPTIONS,
@@ -32,6 +32,7 @@ const Expenses = () => {
   const canFilterServiceHandler = ['mis_manager', 'super_admin', 'business_unit_admin', 'spoc'].includes(user?.role);
   const canFilterCardAssigned = ['mis_manager', 'super_admin', 'business_unit_admin', 'spoc'].includes(user?.role);
   const canEditSharedAllocations = ['mis_manager', 'super_admin'].includes(user?.role);
+  const canBulkDelete = ['mis_manager', 'super_admin'].includes(user?.role);
   const createDefaultFilters = () => ({ ...ADVANCED_FILTER_DEFAULTS });
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,6 +44,8 @@ const Expenses = () => {
   const [duplicateExportMode, setDuplicateExportMode] = useState('all');
   const [exportLimit, setExportLimit] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [bulkDeleteEnabled, setBulkDeleteEnabled] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
   const itemsPerPage = 20;
   const getDuplicateFlag = (expense) => {
     if (expense.duplicateFlag) return expense.duplicateFlag;
@@ -92,6 +95,8 @@ const Expenses = () => {
       const response = await getExpenses(payload);
       if (response.success) {
         setExpenses(response.data);
+        const availableIds = new Set(response.data.map((entry) => entry._id));
+        setSelectedIds((prev) => prev.filter((id) => availableIds.has(id)));
         setCurrentPage(1);
       }
     } catch (error) {
@@ -180,6 +185,20 @@ const Expenses = () => {
         toast.error('Failed to delete expense');
       }
     }
+  };
+
+  const toggleBulkDelete = () => {
+    setBulkDeleteEnabled((prev) => {
+      const next = !prev;
+      if (!next) {
+        setSelectedIds([]);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectEntry = (id) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((entryId) => entryId !== id) : [...prev, id]));
   };
 
   const updateSharedAllocation = (businessUnit, amount) => {
@@ -273,6 +292,37 @@ const Expenses = () => {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    const confirmed = window.confirm(`Delete ${selectedIds.length} selected entries? This cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      await bulkDeleteExpenses(selectedIds);
+      toast.success('Selected entries deleted successfully');
+      setSelectedIds([]);
+      setBulkDeleteEnabled(false);
+      fetchExpenses();
+    } catch (error) {
+      toast.error('Failed to delete selected entries');
+    }
+  };
+
+  const pageExpenses = expenses.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const pageIds = pageExpenses.map((expense) => expense._id);
+  const handleToggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const selected = new Set(prev);
+      const allSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+      if (allSelected) {
+        pageIds.forEach((id) => selected.delete(id));
+      } else {
+        pageIds.forEach((id) => selected.add(id));
+      }
+      return Array.from(selected);
+    });
+  };
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -327,16 +377,16 @@ const Expenses = () => {
         {/* Search and Filters */}
         <Card>
           <div className="space-y-5">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
               <Input
-                className="flex-1"
+                className={`flex-1 ${bulkDeleteEnabled ? 'xl:max-w-[420px]' : ''}`}
                 placeholder="Search by card number, service, handler..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 icon={<Search size={16} />}
               />
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 <Button onClick={handleSearch}>
                   <Search size={18} className="mr-2" />
                   Apply search
@@ -365,6 +415,23 @@ const Expenses = () => {
                   cardAssignedOptions={cardAssignedOptions}
                   includeEmptyOption
                 />
+                {canBulkDelete && (
+                  <Button
+                    variant={bulkDeleteEnabled ? 'primary' : 'secondary'}
+                    onClick={toggleBulkDelete}
+                  >
+                    Bulk delete
+                  </Button>
+                )}
+                {bulkDeleteEnabled && (
+                  <Button
+                    variant="danger"
+                    onClick={handleBulkDelete}
+                    disabled={selectedIds.length === 0}
+                  >
+                    Delete now ({selectedIds.length})
+                  </Button>
+                )}
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600">
@@ -441,11 +508,15 @@ const Expenses = () => {
         {/* Expense Table */}
         <Card>
           <ExpenseTable
-            expenses={expenses.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)}
+            expenses={pageExpenses}
             onEdit={handleEdit}
             onDelete={handleDelete}
             loading={loading}
             showDuplicateColumn={canSeeDuplicateControls && showDuplicateStatus}
+            bulkDeleteEnabled={bulkDeleteEnabled}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelectEntry}
+            onToggleSelectAll={handleToggleSelectAll}
           />
 
           {!loading && expenses.length > 0 && (

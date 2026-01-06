@@ -37,6 +37,11 @@ export const deleteExpense = async (id) => {
   return response.data;
 };
 
+export const bulkDeleteExpenses = async (ids = []) => {
+  const response = await api.post('/expenses/bulk-delete', { ids });
+  return response.data;
+};
+
 export const bulkUploadExpenses = async (file) => {
   const formData = new FormData();
   formData.append('file', file);

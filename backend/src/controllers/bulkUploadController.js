@@ -3,8 +3,14 @@ import csvParser from 'csv-parser';
 import path from 'path';
 import fs from 'fs';
 import ExpenseEntry from '../models/ExpenseEntry.js';
+import User from '../models/User.js';
 import { convertToINR } from '../services/currencyService.js';
 import { annotateDuplicates, filterByDuplicateStatus } from '../utils/duplicateUtils.js';
+import {
+  sendMISNotificationEmail,
+  sendServiceHandlerEntryEmail,
+  sendSpocEntryEmail,
+} from '../services/emailService.js';
 
 const parseFilterDate = (value, endOfDay = false) => {
   if (!value) return undefined;
@@ -41,6 +47,15 @@ const applyMultiValueFilter = (query, field, rawValue) => {
     query[field] = clause;
   }
 };
+
+const normalizeNameKey = (value) => (value ? value.toString().trim().toLowerCase() : '');
+
+const parseNameList = (value) =>
+  value
+    ?.toString()
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean) || [];
 
 // @desc    Bulk upload expense entries
 // @route   POST /api/expenses/bulk-upload
@@ -353,6 +368,38 @@ export const bulkUploadExpenses = async (req, res) => {
       errors: [],
     };
 
+    const misManagers = await User.find({ role: 'mis_manager', isActive: true }).lean();
+    const serviceHandlerCache = new Map();
+    const spocCache = new Map();
+    const emailTasks = [];
+
+    const getUsersByName = async (name, role, businessUnit, cache) => {
+      const normalized = normalizeNameKey(name);
+      if (!normalized) return [];
+      const key = `${role}:${normalized}:${businessUnit || ''}`;
+      if (cache.has(key)) return cache.get(key);
+
+      const nameRegex = new RegExp(`^${escapeRegex(name.trim())}$`, 'i');
+      let query = { role, isActive: true, name: nameRegex };
+      if (businessUnit) {
+        query.businessUnit = businessUnit;
+      }
+
+      let users = await User.find(query).lean();
+      if (users.length === 0 && businessUnit) {
+        users = await User.find({ role, isActive: true, name: nameRegex }).lean();
+      }
+
+      cache.set(key, users);
+      return users;
+    };
+
+    const flushEmailTasks = async () => {
+      if (emailTasks.length === 0) return;
+      const batch = emailTasks.splice(0, emailTasks.length);
+      await Promise.allSettled(batch);
+    };
+
     for (let i = 0; i < data.length; i++) {
       try {
         const row = data[i];
@@ -636,7 +683,7 @@ export const bulkUploadExpenses = async (req, res) => {
           nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 1);
         }
 
-        await ExpenseEntry.create({
+        const createdEntry = await ExpenseEntry.create({
           cardNumber,
           cardAssignedTo,
           date: parsedDate,
@@ -664,6 +711,43 @@ export const bulkUploadExpenses = async (req, res) => {
         });
 
         results.success++;
+
+        const isActiveStatus = (status || '').toString().toLowerCase() === 'active';
+        if (isActiveStatus && businessUnit) {
+          const uploaderName = req.user?.name || 'MIS';
+          const spocNames = parseNameList(cardAssignedTo);
+          for (const spocName of spocNames) {
+            const spocUsers = await getUsersByName(spocName, 'spoc', businessUnit, spocCache);
+            spocUsers.forEach((user) => {
+              if (user.email) {
+                emailTasks.push(sendSpocEntryEmail(user.email, createdEntry, uploaderName));
+              }
+            });
+          }
+
+          const handlerNames = parseNameList(serviceHandler);
+          for (const handlerName of handlerNames) {
+            const handlerUsers = await getUsersByName(handlerName, 'service_handler', businessUnit, serviceHandlerCache);
+            handlerUsers.forEach((user) => {
+              if (user.email) {
+                emailTasks.push(sendServiceHandlerEntryEmail(user.email, createdEntry, uploaderName));
+              }
+            });
+          }
+
+          if (misManagers.length > 0) {
+            const submittedBy = cardAssignedTo || uploaderName;
+            misManagers.forEach((mis) => {
+              if (mis.email) {
+                emailTasks.push(sendMISNotificationEmail(mis.email, createdEntry, submittedBy));
+              }
+            });
+          }
+
+          if (emailTasks.length >= 25) {
+            await flushEmailTasks();
+          }
+        }
       } catch (error) {
         results.failed++;
         results.errors.push({
@@ -673,6 +757,8 @@ export const bulkUploadExpenses = async (req, res) => {
         });
       }
     }
+
+    await flushEmailTasks();
 
     // Clean up uploaded file
     fs.unlinkSync(filePath);
