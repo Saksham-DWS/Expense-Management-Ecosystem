@@ -84,7 +84,7 @@ const expenseEntrySchema = new mongoose.Schema(
     },
     recurring: {
       type: String,
-      enum: ['Monthly', 'Yearly', 'One-time'],
+      enum: ['Monthly', 'Yearly', 'One-time', 'Quaterly'],
       required: false,
     },
     entryStatus: {

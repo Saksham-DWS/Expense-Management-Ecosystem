@@ -22,6 +22,10 @@ const advanceNextRenewalDate = (entry) => {
     while (nextDate < now) {
       nextDate.setFullYear(nextDate.getFullYear() + 1);
     }
+  } else if (entry.recurring === 'Quaterly') {
+    while (nextDate < now) {
+      nextDate.setMonth(nextDate.getMonth() + 3);
+    }
   } else {
     return false;
   }
@@ -109,7 +113,7 @@ export const scheduleRenewalReminders = () => {
         nextRenewalDate: { $lt: new Date() },
         status: 'Active',
         entryStatus: 'Accepted',
-        recurring: { $in: ['Monthly', 'Yearly'] },
+        recurring: { $in: ['Monthly', 'Yearly', 'Quaterly'] },
       });
       for (const entry of overdueEntries) {
         const advanced = advanceNextRenewalDate(entry);
@@ -235,6 +239,9 @@ export const scheduleRenewalFlagReset = () => {
         } else if (entry.recurring === 'Yearly' && nextDate) {
           nextDate = new Date(nextDate);
           nextDate.setFullYear(nextDate.getFullYear() + 1);
+        } else if (entry.recurring === 'Quaterly' && nextDate) {
+          nextDate = new Date(nextDate);
+          nextDate.setMonth(nextDate.getMonth() + 3);
         }
 
         return {

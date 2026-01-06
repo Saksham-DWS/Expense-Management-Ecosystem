@@ -174,6 +174,9 @@ const sampleExpenses = ({ usersByRole }) => {
     } else if (entry.recurring === 'Yearly') {
       nextRenewalDate = new Date(entry.date);
       nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 1);
+    } else if (entry.recurring === 'Quaterly') {
+      nextRenewalDate = new Date(entry.date);
+      nextRenewalDate.setMonth(nextRenewalDate.getMonth() + 3);
     }
 
     return {

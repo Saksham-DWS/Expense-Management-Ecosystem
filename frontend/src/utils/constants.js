@@ -24,7 +24,7 @@ export const APPROVED_BY = [
   'Harshit',
 ];
 
-export const RECURRING_OPTIONS = ['Monthly', 'Yearly', 'One-time'];
+export const RECURRING_OPTIONS = ['Monthly', 'Yearly', 'One-time', 'Quaterly'];
 
 export const CURRENCIES = ['USD', 'EUR', 'GBP', 'INR', 'AUD', 'CAD'];
 

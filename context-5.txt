@@ -251,3 +251,31 @@ and all 400 entry each entry mail went to mis too
 And all spocs and service handlers were existed in the system and they already have the account in the system
 
 is this system is working 
+
+
+4.2 Another query i have in email system is that if bulk upload maded so the Business unit admin will also getting the new entries 
+email and logs of there repected business unit entries right ?  
+
+
+4.3 Hey i Just encountered a problem i am testing with the test data
+
+5. I just got the info from my mis and mis says you need to available another drop down in recurring 
+which is quaterly
+in our System 
+
+Recurring = [Monthly, Yearly, One-time, Quaterly, ]
+
+and quaterly means every 3 Month renew date comes,
+
+so as like renewal Jobs of the system renewal notifications generating to service handler for next renewal date internal or email notifications
+to that of respected business unit serivice handler on each service purchase date and on next renewal before 5 days the renewal notifications has been generating to service handler
+kindly apply the quaterly logic to so if any entry been marked and inputed with Recurring = Quaterly or quaterly case insensitive system should accept and generate quaterly services
+expenses renewal email and internal notifications to that of service handlers according to their service next renewal date 
+
+and also apply this option in add new entry to the system add "quaterly" in sync with the recurring logics in the system so it will work as like other recurring logics works 
+and bulk upload should also accept case insensitive (Quaterly , or quaterly) too ,
+
+this quaterly logic will be in sync with system frontned UI , Backend and Database logic 
+
+understand what i am saying what my goal , intent and vision are and do apply best code quality changes , with no error code
+

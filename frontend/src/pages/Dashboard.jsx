@@ -316,6 +316,7 @@ const Dashboard = () => {
       'One-time': { count: 0, expense: 0 },
       Monthly: { count: 0, expense: 0 },
       Yearly: { count: 0, expense: 0 },
+      Quaterly: { count: 0, expense: 0 },
     };
 
     enhancedExpenses.forEach((exp) => {
@@ -771,7 +772,7 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
           <Card
             title="Recurring Mix"
-            subtitle="One-time vs Monthly vs Yearly distribution"
+            subtitle="One-time vs Monthly vs Quaterly vs Yearly distribution"
             headerAction={
               <div className="flex items-center gap-2">
                 <button className={toggleButtonClass(recurringMetric === 'count')} onClick={() => setRecurringMetric('count')}>

@@ -4,10 +4,12 @@ import path from 'path';
 import fs from 'fs';
 import ExpenseEntry from '../models/ExpenseEntry.js';
 import User from '../models/User.js';
+import Notification from '../models/Notification.js';
 import { convertToINR } from '../services/currencyService.js';
 import { annotateDuplicates, filterByDuplicateStatus } from '../utils/duplicateUtils.js';
 import {
   sendMISNotificationEmail,
+  sendBUEntryNoticeEmail,
   sendServiceHandlerEntryEmail,
   sendSpocEntryEmail,
 } from '../services/emailService.js';
@@ -129,6 +131,10 @@ const excelSerialToDate = (serial) => {
 };
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_LABEL_TO_INDEX = MONTH_LABELS.reduce((acc, label, index) => {
+  acc[label.toLowerCase()] = index;
+  return acc;
+}, {});
 
 const formatMonthLabel = (date) => {
   if (!date || Number.isNaN(date.getTime())) return '';
@@ -136,6 +142,50 @@ const formatMonthLabel = (date) => {
   const year = date.getUTCFullYear();
   if (monthIndex < 0 || monthIndex > 11 || !year) return '';
   return `${MONTH_LABELS[monthIndex]}-${year}`;
+};
+
+const formatMonthLabelFromParts = (monthIndex, year) => {
+  if (monthIndex < 0 || monthIndex > 11 || !year) return '';
+  return `${MONTH_LABELS[monthIndex]}-${year}`;
+};
+
+const extractMonthYearParts = (raw) => {
+  if (!raw && raw !== 0) return null;
+
+  if (raw instanceof Date) {
+    return { monthIndex: raw.getUTCMonth(), year: raw.getUTCFullYear() };
+  }
+
+  if (typeof raw === 'number') {
+    const parsed = parseDateValue(raw);
+    if (parsed && !Number.isNaN(parsed.getTime())) {
+      return { monthIndex: parsed.getUTCMonth(), year: parsed.getUTCFullYear() };
+    }
+    return null;
+  }
+
+  const text = raw.toString().trim();
+  if (!text) return null;
+
+  const monthMatch = text.match(/^([A-Za-z]{3})[-\s]?(\d{2,4})$/);
+  if (monthMatch) {
+    const monthLabel = monthMatch[1].toLowerCase();
+    const monthIndex = MONTH_LABEL_TO_INDEX[monthLabel];
+    if (monthIndex !== undefined) {
+      const yearRaw = monthMatch[2];
+      const year = yearRaw.length === 2 ? Number(`20${yearRaw}`) : Number(yearRaw);
+      if (Number.isFinite(year)) {
+        return { monthIndex, year };
+      }
+    }
+  }
+
+  const parsed = parseDateValue(text);
+  if (parsed && !Number.isNaN(parsed.getTime())) {
+    return { monthIndex: parsed.getUTCMonth(), year: parsed.getUTCFullYear() };
+  }
+
+  return null;
 };
 
 // Parse flexible date formats (Excel serial, mm-dd-yyyy, dd-mm-yyyy, dd-MMM-yy, etc.)
@@ -195,23 +245,26 @@ const parseDateValue = (value) => {
 };
 
 const normalizeMonthValue = (raw, fallbackDate) => {
+  const fallbackLabel = fallbackDate ? formatMonthLabel(fallbackDate) : '';
   if (raw !== undefined && raw !== null) {
-    const parsed = parseDateValue(raw);
-    if (parsed && !Number.isNaN(parsed.getTime())) {
-      return formatMonthLabel(parsed);
+    const rawParts = extractMonthYearParts(raw);
+    if (rawParts) {
+      const rawLabel = formatMonthLabelFromParts(rawParts.monthIndex, rawParts.year);
+      if (fallbackDate) {
+        const fallbackMonth = fallbackDate.getUTCMonth();
+        const fallbackYear = fallbackDate.getUTCFullYear();
+        if (rawParts.monthIndex !== fallbackMonth || rawParts.year !== fallbackYear) {
+          return fallbackLabel;
+        }
+      }
+      return rawLabel || fallbackLabel;
     }
+
     const trimmed = raw.toString().trim();
-    if (!trimmed) return '';
-    if (/^[A-Za-z]{3}[- ]\d{4}$/.test(trimmed)) {
-      return trimmed.replace(' ', '-');
-    }
-    if (/^[A-Za-z]{3}[- ]\d{2}$/.test(trimmed)) {
-      const [month, year] = trimmed.replace(' ', '-').split('-');
-      return `${month}-${year.length === 2 ? `20${year}` : year}`;
-    }
-    return trimmed;
+    if (!trimmed) return fallbackLabel || '';
+    return fallbackLabel || trimmed;
   }
-  return fallbackDate ? formatMonthLabel(fallbackDate) : '';
+  return fallbackLabel || '';
 };
 
 // Helper to fetch a field by multiple aliases (handles trim and lower-case match)
@@ -371,6 +424,7 @@ export const bulkUploadExpenses = async (req, res) => {
     const misManagers = await User.find({ role: 'mis_manager', isActive: true }).lean();
     const serviceHandlerCache = new Map();
     const spocCache = new Map();
+    const buAdminCache = new Map();
     const emailTasks = [];
 
     const getUsersByName = async (name, role, businessUnit, cache) => {
@@ -392,6 +446,18 @@ export const bulkUploadExpenses = async (req, res) => {
 
       cache.set(key, users);
       return users;
+    };
+
+    const getBUAdmins = async (businessUnit) => {
+      if (!businessUnit) return [];
+      if (buAdminCache.has(businessUnit)) return buAdminCache.get(businessUnit);
+      const admins = await User.find({
+        role: 'business_unit_admin',
+        businessUnit,
+        isActive: true,
+      }).lean();
+      buAdminCache.set(businessUnit, admins);
+      return admins;
     };
 
     const flushEmailTasks = async () => {
@@ -591,8 +657,13 @@ export const bulkUploadExpenses = async (req, res) => {
           'year': 'Yearly',
           'annual': 'Yearly',
           'annually': 'Yearly',
+          'quarterly': 'Quaterly',
+          'quaterly': 'Quaterly',
+          'quarter': 'Quaterly',
+          'qtr': 'Quaterly',
+          'qtrly': 'Quaterly',
         };
-        const allowedRecurring = ['Monthly', 'Yearly', 'One-time'];
+        const allowedRecurring = ['Monthly', 'Yearly', 'One-time', 'Quaterly'];
         const recurring = normalizeEnum(recurringRaw, recurringMap, allowedRecurring) || undefined;
         // Shared fields (optional)
         const normalizeBU = (val) => normalizeEnum(val, businessUnitMap, allowedBusinessUnits);
@@ -681,6 +752,9 @@ export const bulkUploadExpenses = async (req, res) => {
         } else if (recurring === 'Yearly') {
           nextRenewalDate = new Date(parsedDate);
           nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 1);
+        } else if (recurring === 'Quaterly') {
+          nextRenewalDate = new Date(parsedDate);
+          nextRenewalDate.setMonth(nextRenewalDate.getMonth() + 3);
         }
 
         const createdEntry = await ExpenseEntry.create({
@@ -735,8 +809,23 @@ export const bulkUploadExpenses = async (req, res) => {
             });
           }
 
+          const buAdmins = await getBUAdmins(businessUnit);
+          const submittedBy = cardAssignedTo || uploaderName;
+          for (const admin of buAdmins) {
+            if (admin.email) {
+              emailTasks.push(sendBUEntryNoticeEmail(admin.email, createdEntry, submittedBy));
+            }
+            await Notification.create({
+              user: admin._id,
+              type: 'entry_approved',
+              title: 'New expense added via bulk upload',
+              message: `${submittedBy} added ${createdEntry.particulars} (${createdEntry.currency} ${createdEntry.amount}) to ${createdEntry.businessUnit}.`,
+              relatedEntry: createdEntry._id,
+              actionRequired: false,
+            });
+          }
+
           if (misManagers.length > 0) {
-            const submittedBy = cardAssignedTo || uploaderName;
             misManagers.forEach((mis) => {
               if (mis.email) {
                 emailTasks.push(sendMISNotificationEmail(mis.email, createdEntry, submittedBy));

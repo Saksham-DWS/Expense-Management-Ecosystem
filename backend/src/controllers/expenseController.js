@@ -2,7 +2,12 @@ import ExpenseEntry from '../models/ExpenseEntry.js';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 import { generateApprovalToken } from '../utils/jwt.js';
-import { sendApprovalEmail, sendBUEntryNoticeEmail, sendMISNotificationEmail } from '../services/emailService.js';
+import {
+  sendBUEntryNoticeEmail,
+  sendMISNotificationEmail,
+  sendServiceHandlerEntryEmail,
+  sendSpocEntryEmail,
+} from '../services/emailService.js';
 import { convertToINR } from '../services/currencyService.js';
 import RenewalLog from '../models/RenewalLog.js';
 import { annotateDuplicates, filterByDuplicateStatus } from '../utils/duplicateUtils.js';
@@ -113,6 +118,15 @@ const parseFilterDate = (value, endOfDay = false) => {
   return new Date(value);
 };
 
+const normalizeNameKey = (value) => (value ? value.toString().trim().toLowerCase() : '');
+
+const parseNameList = (value) =>
+  value
+    ?.toString()
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean) || [];
+
 // @desc    Create new expense entry
 // @route   POST /api/expenses
 // @access  Private (SPOC, MIS, Super Admin, Business Unit Admin)
@@ -172,14 +186,25 @@ export const createExpenseEntry = async (req, res) => {
       });
     }
 
+    const recurringLabel = recurring
+      ? recurring.toString().trim().toLowerCase() === 'quarterly'
+        ? 'Quaterly'
+        : recurring.toString().trim().toLowerCase() === 'quaterly'
+        ? 'Quaterly'
+        : recurring
+      : recurring;
+
     // Calculate next renewal date if recurring
     let nextRenewalDate = null;
-    if (recurring === 'Monthly') {
+    if (recurringLabel === 'Monthly') {
       nextRenewalDate = new Date(date);
       nextRenewalDate.setMonth(nextRenewalDate.getMonth() + 1);
-    } else if (recurring === 'Yearly') {
+    } else if (recurringLabel === 'Yearly') {
       nextRenewalDate = new Date(date);
       nextRenewalDate.setFullYear(nextRenewalDate.getFullYear() + 1);
+    } else if (recurringLabel === 'Quaterly') {
+      nextRenewalDate = new Date(date);
+      nextRenewalDate.setMonth(nextRenewalDate.getMonth() + 3);
     }
 
     let duplicateStatus = null;
@@ -215,7 +240,7 @@ export const createExpenseEntry = async (req, res) => {
       costCenter,
       approvedBy,
       serviceHandler,
-      recurring,
+      recurring: recurringLabel,
       entryStatus,
       duplicateStatus: ['mis_manager', 'super_admin'].includes(req.user.role) ? duplicateStatus : null,
       createdBy: req.user._id,
@@ -225,35 +250,71 @@ export const createExpenseEntry = async (req, res) => {
       sharedAllocations: sharedPayload.sharedAllocations,
     });
 
-    // If SPOC entry, send approval email to Business Unit Admin
-    if (req.user.role === 'spoc') {
-      // Inform ALL BU admins for this business unit (no approval needed)
+    const isActiveStatus = (status || '').toString().toLowerCase() === 'active';
+    if (entryStatus === 'Accepted' && isActiveStatus && businessUnit) {
+      const uploaderName = req.user?.name || 'MIS';
+
+      // Notify BU admins (always for accepted active entries)
       const businessUnitAdmins = await User.find({
         role: 'business_unit_admin',
-        businessUnit: req.user.businessUnit,
+        businessUnit,
       });
 
-      // Create informational notifications and emails (best-effort)
       await Promise.all(
         businessUnitAdmins.map(async (admin) => {
           await Notification.create({
             user: admin._id,
             type: 'entry_approved',
-            title: 'New expense logged by SPOC',
-            message: `${req.user.name} logged ${expenseEntry.particulars} (${expenseEntry.currency} ${expenseEntry.amount}) for ${expenseEntry.businessUnit}.`,
+            title: 'New expense entry added',
+            message: `${uploaderName} added ${expenseEntry.particulars} (${expenseEntry.currency} ${expenseEntry.amount}) to ${expenseEntry.businessUnit}.`,
             relatedEntry: expenseEntry._id,
             actionRequired: false,
           });
-          await sendBUEntryNoticeEmail(admin.email, expenseEntry, req.user.name);
+          await sendBUEntryNoticeEmail(admin.email, expenseEntry, uploaderName);
         })
       );
-    }
 
-    // If auto-approved, notify MIS (all MIS users)
-    if (entryStatus === 'Accepted') {
+      // Notify SPOC (card assigned) + service handler
+      const spocNames = parseNameList(cardAssignedTo);
+      const handlerNames = parseNameList(serviceHandler);
+
+      const spocEmails = new Set();
+      for (const spocName of spocNames) {
+        const normalized = normalizeNameKey(spocName);
+        if (!normalized) continue;
+        const spocUsers = await User.find({
+          role: 'spoc',
+          businessUnit,
+          name: new RegExp(`^${escapeRegex(spocName)}$`, 'i'),
+        });
+        spocUsers.forEach((spoc) => {
+          if (spoc.email) spocEmails.add(spoc.email);
+        });
+      }
+
+      const handlerEmails = new Set();
+      for (const handlerName of handlerNames) {
+        const normalized = normalizeNameKey(handlerName);
+        if (!normalized) continue;
+        const handlerUsers = await User.find({
+          role: 'service_handler',
+          businessUnit,
+          name: new RegExp(`^${escapeRegex(handlerName)}$`, 'i'),
+        });
+        handlerUsers.forEach((handler) => {
+          if (handler.email) handlerEmails.add(handler.email);
+        });
+      }
+
+      await Promise.all([
+        ...[...spocEmails].map((email) => sendSpocEntryEmail(email, expenseEntry, uploaderName)),
+        ...[...handlerEmails].map((email) => sendServiceHandlerEntryEmail(email, expenseEntry, uploaderName)),
+      ]);
+
+      // Notify MIS (all MIS users)
       const misManagers = await User.find({ role: 'mis_manager' });
       await Promise.all(
-        misManagers.map((mis) => sendMISNotificationEmail(mis.email, expenseEntry, req.user.name))
+        misManagers.map((mis) => sendMISNotificationEmail(mis.email, expenseEntry, uploaderName))
       );
     }
 
@@ -477,6 +538,39 @@ export const updateExpenseEntry = async (req, res) => {
         delete req.body[field];
       }
     });
+
+    if (req.body.recurring) {
+      const recurringNormalized = req.body.recurring.toString().trim().toLowerCase();
+      if (['quarterly', 'quaterly', 'qtr', 'qtrly', 'quarter'].includes(recurringNormalized)) {
+        req.body.recurring = 'Quaterly';
+      }
+    }
+
+    if (req.body.recurring || req.body.date) {
+      const nextRecurring = req.body.recurring ?? expenseEntry.recurring;
+      const baseDate = req.body.date ? new Date(req.body.date) : new Date(expenseEntry.date);
+      if (nextRecurring === 'Monthly') {
+        const nextDate = new Date(baseDate);
+        nextDate.setMonth(nextDate.getMonth() + 1);
+        req.body.nextRenewalDate = nextDate;
+        req.body.renewalNotificationSent = false;
+        req.body.autoCancellationNotificationSent = false;
+      } else if (nextRecurring === 'Yearly') {
+        const nextDate = new Date(baseDate);
+        nextDate.setFullYear(nextDate.getFullYear() + 1);
+        req.body.nextRenewalDate = nextDate;
+        req.body.renewalNotificationSent = false;
+        req.body.autoCancellationNotificationSent = false;
+      } else if (nextRecurring === 'Quaterly') {
+        const nextDate = new Date(baseDate);
+        nextDate.setMonth(nextDate.getMonth() + 3);
+        req.body.nextRenewalDate = nextDate;
+        req.body.renewalNotificationSent = false;
+        req.body.autoCancellationNotificationSent = false;
+      } else {
+        req.body.nextRenewalDate = null;
+      }
+    }
 
     if (req.body.duplicateStatus !== undefined) {
       if (!['mis_manager', 'super_admin'].includes(req.user.role)) {
