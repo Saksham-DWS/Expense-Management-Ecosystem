@@ -1,0 +1,37 @@
+
+
+1. I have a question for you, how my cronjobs working in synchronization with the application and its functions
+
+
+2. Hey i have a scinario based question for you, as per my application 
+
+for example  :  a entry has been maded in bulk upload or manual entry added, 
+and in that entry Status is active , busines unit spoc already presnt , service handler is already present in the
+system and his recurring plan is quaterly and the purchase date was maded is 11 jan 2026 , what will be systemetic process for this entry
+
+
+3. hey for example if service user manually disable the service before the renewal reminder date of before 5 days of next renewal date so will he 
+get the renewal reminder email and in app notification ?
+
+
+4. yes the flow is if user manually click disable on end of the service he logs right the email and password and the service cancel request went to mis email 
+and in app notificatikon of that service cancellation as requested by the service handler and mis maually edit and disable that service status deactive , is it in 
+my system? so for the same will the service handler get the renewal notification ever ? of that service who has been status deactive by the mis as requested by the service handler ?
+
+
+
+5. will our system handles 10 lakh plus entiries in one year if i have db space in mongodb , and work same for each entry in the system ?
+
+ans 5 : Short answer: storage isn’t the limiter; performance is. With 10 lakh+ entries/year, the current code can store them, but some queries and cron jobs will slow down unless you add the right indexes and pagination.
+
+Key reasons (from the current code):
+
+Existing indexes are limited to businessUnit/date, serviceHandler, entryStatus, cardNumber. See ExpenseEntry.js.
+Cron jobs filter by status, nextRenewalDate, renewalNotificationSent, autoCancellationNotificationSent, and updatedAt. Those fields aren’t indexed, so MongoDB will scan a lot as the table grows. See cronJobs.js.
+/api/logs loads all expense entries + all renewal logs into memory and sorts them. That will get heavy at scale. See logController.js.
+So yes, it can “work,” but the experience will degrade without tuning. If you want this to scale reliably, the usual fixes are:
+
+Add compound indexes for the cron filters (e.g., status + entryStatus + nextRenewalDate + renewalNotificationSent, and entryStatus + updatedAt).
+Add pagination/limits for logs and listing endpoints.
+Consider archiving old entries or moving cron to a dedicated worker.
+If you want, I can recommend exact indexes and where to add pagination, based on your real query patterns.
